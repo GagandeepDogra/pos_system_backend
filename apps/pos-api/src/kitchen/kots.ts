@@ -6,7 +6,7 @@ import { Kot, KotStatus, Order, OrderItem } from '@dhaba/shared';
 import { writeAudit } from '../audit/audit';
 import { SessionUser } from '../auth/decorators';
 import { buildOrderLine } from '../billing/order-line';
-import { computeTotals } from '../billing/totals';
+import { OrderNotOpenError, recomputeOrder, tableStatusOf, writeException } from '../billing/bill';
 import { ApiError, NotFoundError } from '../common/errors';
 import { nowIst } from '../common/time';
 import { isAvailableToday, resetTimeOf } from '../menu/availability';
@@ -19,7 +19,7 @@ import { WorkbookStore } from '../storage/workbook-store';
 export const HIDE_AFTER_MINUTES = 10;
 export const DEFAULT_LATE_KOT_MINUTES = 15;
 export const ORDER_ITEM_COUNTER = 'ORDER_ITEM';
-export const EXCEPTION_COUNTER = 'EXCEPTION';
+export { EXCEPTION_COUNTER } from '../billing/bill';
 
 /** The one legal next status for each KOT status (REQ-052). NEW → CANCELLED happens only through item cancel. */
 export const KOT_NEXT: Partial<Record<KotStatus, KotStatus>> = { NEW: 'PREPARING', PREPARING: 'READY', READY: 'SERVED' };
@@ -28,27 +28,6 @@ export const KOT_NEXT: Partial<Record<KotStatus, KotStatus>> = { NEW: 'PREPARING
 export function addMinutes(at: string, minutes: number): string {
   return nowIst(new Date(Date.parse(at) + minutes * 60_000));
 }
-
-class OrderNotOpenError extends ApiError {
-  constructor(order: Order) {
-    super(409, 'ORDER_NOT_OPEN', 'This order is already closed.', 'यह ऑर्डर पहले ही बंद है।', { order_id: order.id, status: order.status });
-  }
-}
-
-function writeException(tx: Tx, fields: { order_id: string; exception_type: 'BILL_REOPEN' | 'CANCEL_AFTER_START'; reason_code: string; reason_text: string | null; amount: string | null; requested_by: string; approved_by: string | null }) {
-  return tx.insert('exceptions', {
-    id: idFormats.seq('EXC', tx.nextCounter(counterKeys.seq(EXCEPTION_COUNTER))), ...fields,
-    reason_text: fields.reason_text?.slice(0, 80) ?? null, created_at: tx.now,
-  });
-}
-
-function recomputeOrder(tx: Tx, order: Order, patch: Partial<Order>, userId: string): Order {
-  const settings = tx.all('settings')[0];
-  const totals = computeTotals(order, tx.findBy('order_items', 'order_id', order.id), tx.findBy('payments', 'order_id', order.id), settings);
-  return tx.update('orders', order, { ...totals, ...patch }, userId);
-}
-
-const tableStatusOf = (o: Order) => (o.status === 'OPEN' ? 'OCCUPIED' : o.status === 'BILLED' ? 'READY_TO_CLOSE' : 'AVAILABLE');
 
 // ---------------------------------------------------------------- send to kitchen
 

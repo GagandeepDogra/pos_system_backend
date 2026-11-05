@@ -154,6 +154,16 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     hide_after; no ACTIVE line and no SUCCESS payment → order CANCELLED; returns orderView). **WI-010 calls
     `hideOrderKots(tx, orderId, userId)` when an order becomes PAID.** Ids: order items `OI-NNNNNN` (counter
     `ORDER_ITEM`), exceptions `EXC-NNNNNN` (counter `EXCEPTION`). `kot.created` carries the kitchen card.
+  - `billing/bill.ts` (WI-009) — the billing service: `recomputeOrder(tx, order, patch, userId)` (patch applied, then
+    `computeTotals` — **use it for every money change**, WI-010 payments/voids/close included), `writeException(tx, {...})`
+    (`EXC-NNNNNN`, any `ExceptionType`), `OrderNotOpenError` (409 ORDER_NOT_OPEN), `tableStatusOf(order)`. `printBill`
+    (expectVersion, 422 EMPTY_BILL without ACTIVE lines, bill_no from counter `BILL:<tx.businessDate()>` on first print,
+    kept on reprint, audit BILL_PRINT/BILL_REPRINT) and `applyDiscount` (shared `DISCOUNT_TYPES` FIXED|PERCENT; percent
+    converted once to a stored `discount_amount`, half-up to the paisa; 422 DISCOUNT_TOO_LARGE; above
+    `Settings.discount_limit_amount` a non-Admin consumes an approval token; DISCOUNT exception + audit).
+    `billing.controller.ts` — `POST /orders/:id/bill`, `POST /orders/:id/discount` (body `discount_type?`, `amount` |
+    `percent`, `reason_code?`, `reason_text`|`reason`; one reason required → 400 REASON_REQUIRED; totals are
+    `@ServerDerived`). Both return `orderView`. kots.ts imports these helpers.
   - `deploy/profile.ts` — `loadDeployProfile(env)` (part of `loadConfig().deploy`): `DEPLOY_PROFILE` lan|cloud.
     LAN binds only to a private/loopback `HOST` (default `pickLanAddress()`; `0.0.0.0`/public refused), TLS optional
     (mkcert), no CORS. Cloud requires TLS files, an `https://` `CORS_ORIGIN`, `OFFSITE_BACKUP_DIR`; login limit 10/min.
@@ -177,6 +187,12 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
   `support/ts-register.js` and kill -9s it), `lunch-rush.spec.ts`, `core.e2e.spec.ts` with
   `support/demo.controller.ts` (test-only routes showing the controller pattern: DTO + `@IdempotencyKey` +
   `runIdempotent` + `tx.create` + `tx.emit`; socket.io-client checks events), `support/save-bench.ts`.
+
+- `test/support/sample-session.ts` — `sampleSessionData()`: the §7.6 billing fixture (REQ-100): Table 5
+  `ORD-20261105-0005` (two KOTs, cancelled Sweet Lassi, split CASH 300 + UPI 220, subtotal 520), takeaway T-003
+  `ORD-20261105-0008` (subtotal 260, a roti cancelled while NEW), Butter Chicken Half price change 200→220. Stored totals
+  are 0 on purpose. `test/billing.spec.ts` drives the billing service on a raw `new Tx(new WorkbookStore(data), now)` with a
+  fixed clock; `test/billing.e2e.spec.ts` covers the HTTP side.
 
 - `apps/pos-api/test/tables.e2e.spec.ts` — the pattern for a feature e2e (seeded users, real logins, a `sendKot` helper
   writing KOTs/lines through the queue — switch it to the real send route once WI-008 exists).

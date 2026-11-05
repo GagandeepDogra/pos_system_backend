@@ -103,6 +103,17 @@ owner can open it and back it up. The server:
     (`X-Approval-Token` from `POST /api/v1/auth/approvals`) and an exception row records both people. A
     ticket whose lines are all cancelled is cancelled; an unpaid order with nothing left is cancelled and
     its table becomes Available;
+- prints bills and applies discounts (Admin and Cashier):
+  - `POST /api/v1/orders/{id}/bill` with `If-Match` recomputes the bill on the server from the items not
+    cancelled, at the prices captured when they were ordered: subtotal, discount, tax (GST on top of the
+    prices when a GST rate is set in settings, otherwise 0), round-off to the nearest rupee and grand total.
+    The first print gives the order a bill number `B-YYYYMMDD-NNN` for the business day (a reprint keeps it)
+    and the table turns Ready to Close. Totals sent by a client are ignored;
+  - `POST /api/v1/orders/{id}/discount` with `If-Match` and e.g. `{"amount":"50","reason_text":"Regular"}`
+    or `{"discount_type":"PERCENT","percent":"10","reason_code":"FESTIVAL"}` sets the order's discount. A
+    reason is required, a discount larger than the subtotal is refused (`422`), and a Cashier discount above
+    the settings' discount limit (₹100 by default) needs an Admin approval in `X-Approval-Token`. Every
+    discount is recorded as an exception row;
 - serves the web app's static build (when `WEB_DIR` is set) on every path outside `/api` and `/socket.io`;
   an unknown `/api/...` path answers `404` with code `NOT_FOUND`.
 
@@ -120,7 +131,7 @@ Order lines copy the item name, variant name, food type and unit price at the mo
 menu edits never change old bills. PINs are stored only as bcrypt hashes.
 
 So far the HTTP API has the health endpoint, `GET /api/v1/health` (no login needed), sign-in and
-approvals, the table grid and dine-in session routes, the menu and availability routes and the kitchen routes above, plus the Socket.IO channel.
+approvals, the table grid and dine-in session routes, the menu and availability routes, the kitchen routes and the bill and discount routes above, plus the Socket.IO channel.
 
 ## Stack
 

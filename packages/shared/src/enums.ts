@@ -44,6 +44,10 @@ export const EXCEPTION_TYPES = [
 ] as const;
 export type ExceptionType = (typeof EXCEPTION_TYPES)[number];
 
+/** How a discount is given (REQ-061): a fixed rupee amount or a percent of the subtotal. */
+export const DISCOUNT_TYPES = ['FIXED', 'PERCENT'] as const;
+export type DiscountType = (typeof DISCOUNT_TYPES)[number];
+
 /** Reason codes for closing an order with a balance. */
 export const CLOSE_REASON_CODES = ['COMPLIMENTARY', 'CUSTOMER_LEFT', 'STAFF_MEAL', 'OTHER'] as const;
 export type CloseReasonCode = (typeof CLOSE_REASON_CODES)[number];
