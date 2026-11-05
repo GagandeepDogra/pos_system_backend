@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "recover": "node dist/recover.js",
+    "create-admin": "node dist/create-admin.js",
     "check:deploy": "node dist/deploy-check.js",
     "test": "jest --coverage",
     "test:cov": "jest --coverage",

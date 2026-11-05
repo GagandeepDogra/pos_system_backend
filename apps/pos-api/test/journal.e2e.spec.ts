@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Body, Controller, Get, Headers, HttpCode, INestApplication, Param, Post, Res } from '@nestjs/common';
+import { Public } from '../src/auth/decorators';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -11,6 +12,7 @@ import { seededData, tempDir } from './fixtures';
 import { recordPayment } from './support/pos-ops';
 
 /** Test-only routes standing in for the feature endpoints built later. */
+@Public()
 @Controller('test')
 class ProbeController {
   constructor(private readonly queue: WriteQueue) {}

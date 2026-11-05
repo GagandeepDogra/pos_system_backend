@@ -41,6 +41,19 @@ owner can open it and back it up. The server:
 - pushes small Socket.IO events (path `/socket.io`) after each confirmed change: `kot.created`,
   `kot.status_changed`, `order.updated`, `table.status_changed`, `payment.recorded`,
   `menu.availability_changed`, `dashboard.updated`. A rejected change sends nothing;
+- signs staff in with a PIN: `GET /api/v1/auth/staff` lists active staff (id, name, role) for the login
+  tiles without a token, and `POST /api/v1/auth/login` with `{"user_id","pin"}` returns a JWT. Five wrong
+  PINs in a row lock that user for 5 minutes (`423`, even with the right PIN; each wrong PIN answers `401`
+  with the tries left). A session lasts 12 hours, or until the shift end set in Settings if that comes
+  first; a kitchen device (`"device_role":"KITCHEN"` with a Kitchen user) is not logged out at shift end;
+- requires `Authorization: Bearer <token>` on every other route (`401` without it, when it has expired,
+  or when the user was deactivated or had their PIN reset) and enforces the three roles (Admin, Cashier,
+  Kitchen) on the server: a role that may not call a route gets `403 ACCESS_DENIED`, recorded in the
+  Audit Log sheet. `/api/v1/admin/...` is Admin-only;
+- lets an Admin approve a cashier's action on the cashier's phone: `POST /api/v1/auth/approvals` with the
+  Admin's PIN returns a single-use approval token, valid for 2 minutes, that the action sends as
+  `X-Approval-Token`; the Admin is recorded as approver. Each user sets their own language (`en`/`hi`)
+  with `PATCH /api/v1/me/language`;
 - serves the web app's static build (when `WEB_DIR` is set) on every path outside `/api` and `/socket.io`;
   an unknown `/api/...` path answers `404` with code `NOT_FOUND`.
 
@@ -87,6 +100,8 @@ Environment variables (see `.env.example`; all are optional):
 | `DATA_DIR` | `./data` | folder for the workbook, journal, `backups/` and lock file (relative to where the server starts) |
 | `WORKBOOK_SHEET_PASSWORD` | `dhaba-pos` | password protecting the workbook's sheets |
 | `SNAPSHOT_OPEN_HOURS` | empty (all day) | IST open hours for automatic snapshots, `HH:mm-HH:mm`, e.g. `10:00-23:30` or `18:00-02:00` |
+| `JWT_SECRET` | empty | secret (32+ characters) that signs login tokens. Never stored in the workbook or backups |
+| `JWT_SECRET_FILE` | `pos-api-jwt.secret` next to the data folder | used when `JWT_SECRET` is empty; created with a random secret (mode 600) on first start. Must be outside the data folder |
 | `WEB_DIR` | empty (none) | folder with the web app's static build (`index.html` at its root), served on non-API paths |
 
 ## Install
@@ -99,7 +114,17 @@ npm install
 
 ```bash
 npm run build
+# once, on a fresh data folder (server stopped): the first Admin, who then adds the other staff
+DATA_DIR=./data ADMIN_NAME=Owner ADMIN_PIN=1234 npm run create-admin
 DATA_DIR=./data HOST=127.0.0.1 PORT=3000 npm start
+```
+
+Log in:
+
+```bash
+curl http://localhost:3000/api/v1/auth/staff
+curl -X POST http://localhost:3000/api/v1/auth/login -H 'Content-Type: application/json' \
+  -d '{"user_id":"USR-000001","pin":"1234"}'
 ```
 
 (Without `HOST`, the server binds to this machine's LAN address, so other devices on the Wi-Fi reach it

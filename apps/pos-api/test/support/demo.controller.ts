@@ -1,6 +1,7 @@
 // Test-only routes that exercise the core (queue, repository, validation,
 // errors, realtime) the way the feature controllers will. Not part of src/.
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Res } from '@nestjs/common';
+import { Public } from '../../src/auth/decorators';
 import { Type } from 'class-transformer';
 import { ArrayMinSize, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import type { Response } from 'express';
@@ -40,6 +41,7 @@ export class OpenTableDto {
   @IsString() table_id!: string;
 }
 
+@Public()
 @Controller('demo')
 export class DemoController {
   constructor(private readonly queue: WriteQueue, private readonly storage: StorageService) {}

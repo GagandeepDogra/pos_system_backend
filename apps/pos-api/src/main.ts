@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { JwtSecretError, loadJwtSecret } from './auth/jwt-secret';
 import { configureApp } from './app.setup';
 import { AppConfig, loadConfig } from './config';
 import { restrictDataFolder } from './deploy/data-folder';
@@ -25,6 +26,13 @@ async function bootstrap(): Promise<void> {
     throw err;
   }
   const { deploy } = config;
+  let jwtSecret: string;
+  try {
+    jwtSecret = loadJwtSecret(process.env, config.dataDir);
+  } catch (err) {
+    if (err instanceof JwtSecretError) refuse(err);
+    throw err;
+  }
   const access = restrictDataFolder(config.dataDir);
   if (access.tightened) console.log(`pos-api: data folder ${config.dataDir} was readable by others; set to mode ${access.mode}`);
   const storage = new StorageService({ dataDir: config.dataDir, sheetPassword: config.sheetPassword });
@@ -40,7 +48,7 @@ async function bootstrap(): Promise<void> {
 
   // Listen first so /health can answer 503 while the workbook loads; every
   // other route is refused until loading, migration and journal replay finish.
-  const app = await NestFactory.create(AppModule.register(storage), {
+  const app = await NestFactory.create(AppModule.register(storage, [], [], { jwtSecret }), {
     httpsOptions: deploy.tls ? readTlsOptions(deploy.tls) : undefined,
   });
   configureApp(app, { webDir: config.webDir });

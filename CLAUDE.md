@@ -62,6 +62,33 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     paise and stored as 2-dp strings ("120.00"); workbook cells hold numbers.
   - `billing/order-line.ts` — `buildOrderLine(item, variant, input)` copies the snapshots and the price.
   - `auth/pin.ts` — `hashPin` (bcrypt cost 10, PIN of 4+ digits), `verifyPin`.
+  - `auth/auth.guard.ts` — global `AuthGuard` (APP_GUARD after StartupGuard): Bearer HS256 JWT (`auth/jwt.ts`, no
+    library) → `req.user: SessionUser` (`@CurrentUser()`); 401 UNAUTHORIZED when missing/forged/expired (12 h or
+    shift end)/user inactive/`token_version` bumped. `@Public()` skips it (health is always public). `@Roles(...)`
+    (method or class); default = any role, but **any `/api/v1/admin/*` route defaults to ADMIN**. A role denial
+    → 403 ACCESS_DENIED + an `ACCESS_DENIED` audit row (entity_type = first path segment, entity_id = `:id` param).
+  - `auth/permissions.ts` — `PERMISSIONS[operationId]` = roles for every contract route. **Feature controllers use
+    `@Roles(...PERMISSIONS.<operationId>)`**. Approval-gated actions (void, close-exception, cancel after start,
+    discount above limit) allow CASHIER; the handler then consumes an approval token.
+  - `auth/auth.service.ts` — `AuthService` (Nest provider; `auth.now` clock for tests): `login` (bcrypt before the
+    queue; lockout 5 wrong → `locked_until` now+5 min, 401 WRONG_PIN `details.remaining_tries`, 423 USER_LOCKED;
+    an expired lock restarts the count), `authenticate`, `sessionExpiry` (min(12 h, next IST `Settings.shift_end_time`),
+    kitchen device = `device_role:'KITCHEN'` + Kitchen user ignores shift end). User helpers for WI-014:
+    `publicUser` (strip pin_hash — **never return a UserRow**; don't use `tx.expectVersion` on users, its 409
+    carries the row), `unlockPatch`, `deactivatePatch` (bumps token_version), `pinResetPatch`, `findAdminByPin`
+    (Admin PIN clash check).
+  - `auth/approvals.ts` — `ApprovalStore` = `authService.approvals`: in-memory 2-min single-use tokens bound to the
+    requesting user. In the approved change call `auth.approvals.consume(token, user.id)` **inside `queue.run`**
+    (403 APPROVAL_INVALID) and store the result as `approved_by` / audit `approver_id`. `@ApprovalToken()` reads
+    `X-Approval-Token`.
+  - `auth/auth.controller.ts` — `GET /auth/staff`, `POST /auth/login`, `POST /auth/approvals` (Idempotency-Key kept
+    in memory 24 h per user), `PATCH /me/language`.
+  - `auth/jwt-secret.ts` — `loadJwtSecret(env, dataDir)`: JWT_SECRET or JWT_SECRET_FILE (default
+    `<parent of DATA_DIR>/pos-api-jwt.secret`, generated mode 600); refused inside DATA_DIR. main.ts passes it to
+    `AppModule.register(storage, [], [], { jwtSecret })`.
+  - `auth/first-admin.ts` + `create-admin.ts` — `npm run create-admin` (ADMIN_NAME, ADMIN_PIN) seeds the first Admin;
+    users ids are `USR-NNNNNN` from counter `USER` (`USER_COUNTER`).
+  - `audit/audit.ts` — `writeAudit(tx, {...})` inserts an `AUD-NNNNNN` row (counter `AUDIT`) in the same change.
   - `common/time.ts` — `nowIst()` gives timestamps with +05:30.
   - `storage/repository.ts` — `createStamp`, `updateStamp` (row_version +1, audit columns in a patch are
     ignored), `businessDate(at, resetTime='04:00')` (IST), `counterKeys` (ORDER global; TOKEN:/KOT:/BILL:<date>)
@@ -85,8 +112,9 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     non-/api, non-/socket.io paths. **Tests must call it too** instead of `setGlobalPrefix`.
   - `health/health.controller.ts` — `GET /api/v1/health` (no auth): status green/red, workbook (last save,
     error, unsaved_changes), alert, journal, queue, backups; 503 while loading.
-  - `app.module.ts` — `AppModule.register(storage, extraControllers?, extraProviders?)`; provides
-    StorageService, WriteQueue, BackupService, RealtimeGateway, StartupGuard (APP_GUARD).
+  - `app.module.ts` — `AppModule.register(storage, extraControllers?, extraProviders?, auth?)` (`auth` = AuthOptions or an
+    AuthService instance); provides StorageService, WriteQueue, BackupService, AuthService, RealtimeGateway,
+    StartupGuard + AuthGuard (APP_GUARD), AuthController, MeController.
   - `deploy/profile.ts` — `loadDeployProfile(env)` (part of `loadConfig().deploy`): `DEPLOY_PROFILE` lan|cloud.
     LAN binds only to a private/loopback `HOST` (default `pickLanAddress()`; `0.0.0.0`/public refused), TLS optional
     (mkcert), no CORS. Cloud requires TLS files, an `https://` `CORS_ORIGIN`, `OFFSITE_BACKUP_DIR`; login limit 10/min.
@@ -100,6 +128,10 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
   - `main.ts` — lock folder → listen → `storage.load()` → `startAutoSave` + snapshot scheduler. Exits 1
     ("pos-api refused to start") on a held lock or a damaged journal; a corrupt workbook keeps the server up
     in recovery mode.
+- `apps/pos-api/test/auth.e2e.spec.ts` — login/lockout/sessions/approvals/language and the **permission matrix**
+  over `test/support/contract-routes.ts` (`CONTRACT_ROUTES` + `stubController(implemented)` stubs with the matrix
+  roles). When you build a feature controller, register it in that app and add its operationIds to `implemented`
+  so the matrix tests the real routes. Test-only controllers without auth must be `@Public()`.
 - `apps/pos-api/test` — fixtures (`sampleData()`, `seededData()` = sample + counters, `tempDir()`), e2e
   specs, `support/pos-ops.ts` (stand-in order/KOT/payment changes for durability tests — replace with the
   real services' calls when they exist), `chaos.spec.ts` (spawns `support/chaos-writer.ts` through
@@ -112,7 +144,7 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
 - `npm test` — jest with coverage; thresholds of 80% on `src/storage/` and `src/billing/` (jest.config.js).
 - `npm run build` — builds shared, then pos-api (`tsc -p tsconfig.build.json`).
 - `npm start` — `node apps/pos-api/dist/main.js`; env: PORT, HOST, DATA_DIR, WORKBOOK_SHEET_PASSWORD,
-  SNAPSHOT_OPEN_HOURS (optional `HH:mm-HH:mm`; an invalid value fails startup), WEB_DIR (optional PWA build).
+  JWT_SECRET / JWT_SECRET_FILE, SNAPSHOT_OPEN_HOURS (optional `HH:mm-HH:mm`; an invalid value fails startup), WEB_DIR (optional PWA build).
 - `npm run bench:save -w @dhaba/pos-api` — times saves of a synthetic ≥15 MB workbook (TARGET_MB env).
 - `npm run check:deploy` — reviews the deployment env (profile rules, data folder mode, off-server folder).
 - Deployment files (repo root): `deploy/windows/install-service.ps1` (NSSM + icacls + firewall),
@@ -120,6 +152,7 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
   (profiles, LAN/cloud checklists, pos.local + mkcert spike). Env: DEPLOY_PROFILE, TLS_CERT_FILE, TLS_KEY_FILE,
   HTTP_REDIRECT_PORT, CORS_ORIGIN, OFFSITE_BACKUP_DIR, OFFSITE_BACKUP_TIME. Without HOST the LAN profile binds the
   LAN IP, so local runs use `HOST=127.0.0.1`.
+- `npm run create-admin` — with the server stopped, `ADMIN_NAME=.. ADMIN_PIN=.. DATA_DIR=..` adds the first Admin.
 - `npm run recover` — with the server stopped, restore a corrupt live workbook from the newest valid backup
   plus journal replay.
 
