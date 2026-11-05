@@ -202,6 +202,16 @@ owner can open it and back it up. The server:
   items and the archive results; the same key again returns the same result with `200`. Writes from other
   devices wait while the close runs. Token, ticket and bill numbers restart at 1 on their own at the
   business-day cut-off (04:00 by default);
+- reports sales (Admin only): `GET /api/v1/admin/reports/sales?from=YYYY-MM-DD&to=YYYY-MM-DD` (business
+  dates, inclusive; today or yesterday is `from` = `to`; `from` after `to` is `400 INVALID_DATE_RANGE`) returns
+  `total_sales` (the sum of successful payments; voided ones are listed apart in `voided_payments`), totals by
+  payment method and by day, order counts by status, sales by category and the top 10 items (active lines at
+  their captured prices, before discount and tax), cancelled items, discounts, and exceptions by type. Months
+  that were moved to `archive/` are read from their archive files, so a range can span any period;
+- searches order history (Admin only): `GET /api/v1/admin/orders?date=&bill_no=&table=&token=` returns the
+  matching orders newest first (every given filter must match; at most 200), each with `archived: true|false`.
+  `table` is the table number, `token` may be written `3`, `003` or `T-003`. An unknown bill number gives an
+  empty list. Archived months are searched when the date or the bill number points at them;
 - serves the web app's static build (when `WEB_DIR` is set) on every path outside `/api` and `/socket.io`;
   an unknown `/api/...` path answers `404` with code `NOT_FOUND`.
 
@@ -230,7 +240,7 @@ Order lines copy the item name, variant name, food type and unit price at the mo
 menu edits never change old bills. PINs are stored only as bcrypt hashes.
 
 So far the HTTP API has the health endpoint, `GET /api/v1/health` (no login needed), sign-in and
-approvals, the table grid and dine-in session routes, the menu and availability routes, the kitchen routes, the bill and discount routes, the payment routes, the takeaway, dashboard, admin and day-close routes above, plus the Socket.IO channel.
+approvals, the table grid and dine-in session routes, the menu and availability routes, the kitchen routes, the bill and discount routes, the payment routes, the takeaway, dashboard, admin, day-close, report and order-search routes above, plus the Socket.IO channel.
 
 ## Stack
 

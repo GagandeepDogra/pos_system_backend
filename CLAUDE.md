@@ -228,6 +228,16 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     same row_version are pruned without rewriting. **WI-015 reports read live + `listArchiveParts(storage.archiveDir, month)`
     (`readWorkbookFile`); for an id in several parts the later part wins.** `writeWorkbookFile` throws `ArchiveReadOnlyError` for
     archive names in `archive/` or any read-only target.
+  - `reports/reports.ts` + `reports.controller.ts` (WI-015) — `GET /admin/reports/sales?from&to` (`salesReport`: `loadRows(src, months)`
+    merges archive parts of the range's months (oldest first, later part wins) under live (live wins), then the pure
+    `aggregateSales(rows, from, to)`: `total_sales` = SUCCESS payments by payment.business_date, `by_method`, `by_day`,
+    `voided_payments`, orders by status, `by_category`/`top_items` (ACTIVE lines of non-CANCELLED orders of the range, line_total
+    snapshots; category via live/archive variants→items→categories), `cancelled_items`, `discounts` (orders' discount_amount),
+    `exceptions` (by type, of the range's orders), `archive_files`; 400 INVALID_DATE_RANGE when from > to). `GET /admin/orders?date&
+    bill_no&table&token` (`searchOrders`: AND of filters over live, plus the archive month named by `date` or by the bill number's
+    date; `archived` flag; newest first, max 200; token `3`/`T-003` normalised). `readArchivePart(file)` caches up to 6 parsed
+    archive files (they are never rewritten; if anything ever replaces one, clear the cache).
+    Tests: `test/reports.e2e.spec.ts`.
   - `WriteQueue.exclusive(async commit => …)` holds the queue for multi-step async work (day close; **WI-017's restore swap should use
     it** — "take write lock; queued writes wait"). Inside, use `commit(change)`, never `queue.run` (deadlock). `Tx.remove` is only for
     the archive prune (REQ-082: features never delete).
