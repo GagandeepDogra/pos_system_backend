@@ -236,11 +236,33 @@ If the server stops halfway, the next day close finishes the job without writing
 an archived month that are added later (for example orders taken after the month-end close but before the
 04:00 cut-off) go into a further file, `archive/YYYY-MM-2.xlsx`, at a later close.
 
+### Backup download and restore
+
+Backups hold PIN hashes, so only an Admin can download or restore them, and every download is written to
+the audit log.
+
+- `GET /api/v1/admin/backups/download` downloads the live workbook (saved first, so it is current);
+  `?snapshot=snapshot-20261105-143000-auto.xlsx` downloads a snapshot from `backups/` instead.
+- `POST /api/v1/admin/restores` (header `Idempotency-Key`) uploads a backup, either as a multipart form
+  field named `file` or as a raw `.xlsx` body. The file is checked completely: schema version, exactly the 15
+  sheets and their columns, unique ids, references between sheets, allowed status/enum values, amounts with
+  at most 2 decimals and at least one active Admin. A bad file is refused with 422 and a list of the problems;
+  a good one is held for 30 minutes and the answer shows a restore id, the file's date and its order and
+  payment counts.
+- `POST /api/v1/admin/restores/{id}/confirm` with `{"pin": "...", "pin_confirm": "..."}` (the Admin's own PIN,
+  typed twice) does the restore: new changes wait while the server saves a `pre-restore` snapshot of the
+  current data into `backups/`, swaps the uploaded file in as the live workbook and tells every connected
+  device to reload. Mismatched or wrong PINs are refused with 403, an unknown or expired restore id with 404.
+  Staff whose accounts differ in the restored file have to sign in again.
+
+Uploaded files wait in `restore-staging/` in the data folder until confirmed; that folder is cleared when the
+server starts.
+
 Order lines copy the item name, variant name, food type and unit price at the moment of ordering, so later
 menu edits never change old bills. PINs are stored only as bcrypt hashes.
 
 So far the HTTP API has the health endpoint, `GET /api/v1/health` (no login needed), sign-in and
-approvals, the table grid and dine-in session routes, the menu and availability routes, the kitchen routes, the bill and discount routes, the payment routes, the takeaway, dashboard, admin, day-close, report and order-search routes above, plus the Socket.IO channel.
+approvals, the table grid and dine-in session routes, the menu and availability routes, the kitchen routes, the bill and discount routes, the payment routes, the takeaway, dashboard, admin, day-close, report, order-search, backup download and restore routes above, plus the Socket.IO channel.
 
 ## Stack
 

@@ -22,6 +22,7 @@ import { WriteQueue } from './write-queue';
 export const WORKBOOK_FILE = 'dhaba-pos.xlsx';
 export const BACKUP_DIR = 'backups';
 export const ARCHIVE_DIR = 'archive';
+export const RESTORE_STAGING_DIR = 'restore-staging';
 
 export interface StorageOptions {
   dataDir: string;
@@ -345,6 +346,35 @@ export class StorageService {
       this.lastSaveError = (err as Error).message;
       throw err;
     }
+  }
+
+  /**
+   * Restore swap (REQ-110): makes `data` the live workbook. Call it only inside
+   * `queue.exclusive`, after the pre-restore snapshot. Meta.last_journal_seq is
+   * set to the journal's last seq, the file is written atomically over the live
+   * one, the journal is emptied (every entry belongs to the old data and is in
+   * the pre-restore snapshot) and memory is reloaded. Never overlaps a save.
+   */
+  replaceWorkbook(data: WorkbookData): Promise<void> {
+    const next = this.saving.catch(() => undefined).then(async () => {
+      this.assertWritable();
+      const seq = this.journal.lastSeq;
+      const now = nowIst();
+      data.meta[0] = { ...data.meta[0], last_journal_seq: seq, updated_at: now };
+      await writeWorkbookFile(this.workbookPath, data, this.options.sheetPassword);
+      this.journal.compact(seq);
+      this.storeRef = new WorkbookStore(data);
+      this.lastSaveError = null;
+      this.lastSavedAt = now;
+      this.lastSavedSeq = seq;
+    });
+    this.saving = next;
+    return next;
+  }
+
+  /** Where uploaded restore files wait for confirmation (never backups/, so recovery ignores them). */
+  get restoreStagingDir(): string {
+    return path.join(this.options.dataDir, RESTORE_STAGING_DIR);
   }
 
   close(): void {

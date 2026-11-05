@@ -238,6 +238,16 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     date; `archived` flag; newest first, max 200; token `3`/`T-003` normalised). `readArchivePart(file)` caches up to 6 parsed
     archive files (they are never rewritten; if anything ever replaces one, clear the cache).
     Tests: `test/reports.e2e.spec.ts`.
+  - `backups/restore.ts` + `backups.controller.ts` (WI-017) — `GET /admin/backups/download?snapshot` (`downloadTarget`: live file or a
+    name listed by `BackupFolder.list()`, else 404 SNAPSHOT_NOT_FOUND; BACKUP_DOWNLOAD audit journalled first, live file saved if it
+    lags; xlsx streamed), `POST /admin/restores` (multipart field `file` or raw body; `validateUpload` = ExcelJS load + `parseWorkbook`
+    + "has an active Admin" → 422 RESTORE_INVALID `details.errors`; staged in `<DATA_DIR>/restore-staging/RST-<hex>.xlsx` — never in
+    backups/, which recovery scans — for `RESTORE_TTL_MS` 30 min, cleared at construction; Idempotency-Key in memory 24 h per user),
+    `POST /admin/restores/:id/confirm` (`{pin, pin_confirm}`; 403 PIN_MISMATCH / PIN_NOT_ADMIN = not the caller's own Admin PIN,
+    404 RESTORE_NOT_FOUND). `RestoreService.confirm` runs in `queue.exclusive`: RESTORE audit (old data) → `backups.snapshot('pre-restore')`
+    (503 SNAPSHOT_FAILED) → re-read staged file → `storage.replaceWorkbook(data)` (Meta.last_journal_seq = journal.lastSeq, atomic write,
+    journal compacted to empty, store swapped; chained with saves) → RESTORE audit (new data) + `app.reload` + `dashboard.updated` →
+    an `auto` snapshot of the restored data. Tests: `test/backups.e2e.spec.ts`.
   - `WriteQueue.exclusive(async commit => …)` holds the queue for multi-step async work (day close; **WI-017's restore swap should use
     it** — "take write lock; queued writes wait"). Inside, use `commit(change)`, never `queue.run` (deadlock). `Tx.remove` is only for
     the archive prune (REQ-082: features never delete).
