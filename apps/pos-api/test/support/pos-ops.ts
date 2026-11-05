@@ -1,9 +1,12 @@
 // Minimal order / KOT / payment changes run through the real write queue.
-// They stand in for the feature services (built later) in the durability tests.
+// They stand in for the feature services (built later) in the durability tests;
+// recordPayment already calls the real payment service.
 import { Order, OrderItem, Payment } from '@dhaba/shared';
 import { buildOrderLine } from '../../src/billing/order-line';
 import { fromPaise, toPaise } from '../../src/billing/money';
-import { WriteQueue } from '../../src/storage/write-queue';
+import { SessionUser } from '../../src/auth/decorators';
+import { recordPayment as recordRealPayment } from '../../src/payments/payments';
+import { IdempotentResult, WriteQueue } from '../../src/storage/write-queue';
 
 const BD = '2026-11-05';
 const ymd = BD.replace(/-/g, '');
@@ -54,25 +57,10 @@ export function sendKot(queue: WriteQueue, orderId: string, key: string, lines: 
   });
 }
 
-export class OverpaymentError extends Error {}
+const CASHIER: SessionUser = { id: 'U1', role: 'CASHIER', display_name: 'Cashier', kitchen_device: false, device_id: null };
 
-export function recordPayment(queue: WriteQueue, orderId: string, key: string, amount: string) {
-  return queue.runIdempotent('payments', 'idempotency_key', key, (tx) => {
-    const order = tx.get('orders', orderId)!;
-    const balance = toPaise(order.balance_due);
-    if (toPaise(amount) > balance) throw new OverpaymentError('OVERPAYMENT');
-    const payment: Payment = {
-      id: `PAY-${ymd}-${String(tx.nextCounter('PAYMENT')).padStart(4, '0')}`, order_id: orderId, business_date: BD,
-      method: 'CASH', amount, tendered_amount: null, upi_ref: null, status: 'SUCCESS', void_reason: null,
-      voided_by: null, idempotency_key: key, created_at: tx.now, created_by: 'U1', updated_at: tx.now,
-      updated_by: 'U1', row_version: 1,
-    };
-    tx.insert('payments', payment);
-    const left = balance - toPaise(amount);
-    tx.replace('orders', {
-      ...order, paid_amount: fromPaise(toPaise(order.paid_amount) + toPaise(amount)), balance_due: fromPaise(left),
-      status: left === 0 ? 'PAID' : order.status, updated_at: tx.now, row_version: order.row_version + 1,
-    });
-    return payment;
-  });
+/** The real payment service (WI-010): a CASH part, idempotent on `key`, 422 OVERPAYMENT above the balance. */
+export function recordPayment(queue: WriteQueue, orderId: string, key: string, amount: string): Promise<IdempotentResult<Payment>> {
+  return queue.runIdempotent('payments', 'idempotency_key', key, (tx) =>
+    recordRealPayment(tx, orderId, { method: 'CASH', amount, tendered_amount: null, upi_ref: null }, key, CASHIER));
 }

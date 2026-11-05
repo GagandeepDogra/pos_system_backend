@@ -50,7 +50,8 @@ export function writeException(tx: Tx, fields: ExceptionFields): OrderException 
   });
 }
 
-function emitOrderChange(tx: Tx, before: Order, after: Order): void {
+/** Emits table.status_changed (when the table colour changes), order.updated and dashboard.updated. */
+export function emitOrderChange(tx: Tx, before: Order, after: Order): void {
   if (after.table_id && tableStatusOf(before) !== tableStatusOf(after)) {
     tx.emit('table.status_changed', { table_id: after.table_id, status: tableStatusOf(after), order_id: after.id });
   }

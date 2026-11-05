@@ -164,6 +164,18 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     `billing.controller.ts` — `POST /orders/:id/bill`, `POST /orders/:id/discount` (body `discount_type?`, `amount` |
     `percent`, `reason_code?`, `reason_text`|`reason`; one reason required → 400 REASON_REQUIRED; totals are
     `@ServerDerived`). Both return `orderView`. kots.ts imports these helpers.
+  - `payments/payments.ts` (WI-010) — queue changes `recordPayment(tx, orderId, input, key, user)` (call via
+    `runIdempotent('payments','idempotency_key')`; ids `PAY-NNNNNN` counter `PAYMENT`; balance rechecked with
+    `computeTotals`; 422 OVERPAYMENT; zero balance → PAID + `hideOrderKots`; emits `payment.recorded`), `voidPayment`
+    (non-Admin consumes approval; VOIDED row kept, `voided_by` = Admin id; PAID reopens to BILLED (bill_no) or OPEN,
+    409 TABLE_BUSY if the table holds a new session; PAYMENT_VOID exception + VOID audit), `closeWithException`
+    (shared `CLOSE_REASON_CODES`; CLOSED_EXCEPTION keeps its balance_due, CLOSE_WITH_BALANCE exception amount = balance),
+    `logReceiptPrint` (audit RECEIPT_PRINT first, REPRINT after), `openBills(store)` (OPEN/BILLED with balance > 0, +
+    `label`, `ready_to_close`), `changeDue`. `payments.controller.ts` = `GET /bills/open`, `POST /orders/:id/payments`
+    (response adds `change_due`), `POST /payments/:id/void` (`void_reason`|`reason`), `POST /orders/:id/close-exception`,
+    `POST /orders/:id/receipt-prints` (Idempotency-Key kept in memory 24 h per user, checked inside the queue change;
+    returns orderView + `settings` + `print`). `emitOrderChange` is exported from `billing/bill.ts`.
+    WI-011 handover should require `status === 'PAID'`; WI-016 day close lists OPEN/BILLED via `openBills`-like filters.
   - `deploy/profile.ts` — `loadDeployProfile(env)` (part of `loadConfig().deploy`): `DEPLOY_PROFILE` lan|cloud.
     LAN binds only to a private/loopback `HOST` (default `pickLanAddress()`; `0.0.0.0`/public refused), TLS optional
     (mkcert), no CORS. Cloud requires TLS files, an `https://` `CORS_ORIGIN`, `OFFSITE_BACKUP_DIR`; login limit 10/min.
@@ -181,6 +193,9 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
   over `test/support/contract-routes.ts` (`CONTRACT_ROUTES` + `stubController(implemented)` stubs with the matrix
   roles). When you build a feature controller, register it in that app and add its operationIds to `implemented`
   so the matrix tests the real routes. Test-only controllers without auth must be `@Public()`.
+- `apps/pos-api/test/payments.e2e.spec.ts` (payments/voids/close/receipt over HTTP, `billedTable(lines)` helper) and
+  `lunch-rush.e2e.spec.ts` (REQ-138/126: 10 HTTP clients with double taps, p95 send/pay < 1.5 s, crash + journal replay,
+  no duplicate/mispriced rows). `support/pos-ops.ts` `recordPayment` now calls the real payment service.
 - `apps/pos-api/test` — fixtures (`sampleData()`, `seededData()` = sample + counters, `tempDir()`), e2e
   specs, `support/pos-ops.ts` (stand-in order/KOT/payment changes for durability tests — replace with the
   real services' calls when they exist), `chaos.spec.ts` (spawns `support/chaos-writer.ts` through

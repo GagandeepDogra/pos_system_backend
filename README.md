@@ -114,6 +114,25 @@ owner can open it and back it up. The server:
     reason is required, a discount larger than the subtotal is refused (`422`), and a Cashier discount above
     the settings' discount limit (₹100 by default) needs an Admin approval in `X-Approval-Token`. Every
     discount is recorded as an exception row;
+- takes payments (Admin and Cashier):
+  - `GET /api/v1/bills/open` lists the open and billed orders that still have a balance due, oldest first,
+    each with a `label` (table number or takeaway token) and `ready_to_close` (bill printed);
+  - `POST /api/v1/orders/{id}/payments` with an `Idempotency-Key` header and
+    `{"method":"CASH|UPI|CARD","amount":"300","tendered_amount":"500"?,"upi_ref"?}` records one payment part
+    (`201`; the same key again returns the original payment with `200`). A cash payment answers with
+    `change_due`; the UPI reference is optional. An amount above the balance due is refused with `422`
+    `OVERPAYMENT`. Several parts (split payment) are allowed until the balance is zero; then the order
+    becomes `PAID`, its table turns Available and its kitchen tickets leave the board 10 minutes later;
+  - `POST /api/v1/payments/{id}/void` with `If-Match` and `{"void_reason"}` marks a payment `VOIDED`
+    (the row is kept) and adds its amount back to the balance; a paid order reopens. Admin only, or a
+    Cashier with an Admin approval in `X-Approval-Token`;
+  - `POST /api/v1/orders/{id}/close-exception` with `If-Match` and
+    `{"reason_code":"COMPLIMENTARY|CUSTOMER_LEFT|STAFF_MEAL|OTHER","reason_text"?}` closes an order that
+    still has a balance as `CLOSED_EXCEPTION` and records the written-off balance in an exception row
+    (Admin, or a Cashier with an Admin approval; `OTHER` needs a `reason_text`);
+  - `POST /api/v1/orders/{id}/receipt-prints` with an `Idempotency-Key` header logs a receipt print
+    (the first is `RECEIPT_PRINT`, later ones `REPRINT` in the audit log) and returns the order with its
+    lines and payments plus the dhaba `settings` for the receipt page. Printing never changes a payment;
 - serves the web app's static build (when `WEB_DIR` is set) on every path outside `/api` and `/socket.io`;
   an unknown `/api/...` path answers `404` with code `NOT_FOUND`.
 
@@ -131,7 +150,7 @@ Order lines copy the item name, variant name, food type and unit price at the mo
 menu edits never change old bills. PINs are stored only as bcrypt hashes.
 
 So far the HTTP API has the health endpoint, `GET /api/v1/health` (no login needed), sign-in and
-approvals, the table grid and dine-in session routes, the menu and availability routes, the kitchen routes and the bill and discount routes above, plus the Socket.IO channel.
+approvals, the table grid and dine-in session routes, the menu and availability routes, the kitchen routes, the bill and discount routes and the payment routes above, plus the Socket.IO channel.
 
 ## Stack
 

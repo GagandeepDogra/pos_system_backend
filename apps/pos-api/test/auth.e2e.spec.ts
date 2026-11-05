@@ -90,7 +90,7 @@ describe('authentication, role guards and approvals (WI-005)', () => {
     await storage.open();
     auth = new AuthService(storage, { jwtSecret: SECRET, now: () => clock });
     const moduleRef = await Test.createTestingModule({
-      imports: [AppModule.register(storage, [ApprovalProbeController, AdminDefaultController, stubController(new Set(['createApproval', 'updateMyLanguage', 'listTables', 'openTableSession', 'getOrder', 'moveOrder', 'mergeOrders', 'getMenu', 'setItemAvailability', 'markItemOutOfStock', 'sendToKitchen', 'listKitchenKots', 'updateKotStatus', 'cancelOrderItem', 'printBill', 'applyDiscount']))], [], auth)],
+      imports: [AppModule.register(storage, [ApprovalProbeController, AdminDefaultController, stubController(new Set(['createApproval', 'updateMyLanguage', 'listTables', 'openTableSession', 'getOrder', 'moveOrder', 'mergeOrders', 'getMenu', 'setItemAvailability', 'markItemOutOfStock', 'sendToKitchen', 'listKitchenKots', 'updateKotStatus', 'cancelOrderItem', 'printBill', 'applyDiscount', 'listOpenBills', 'recordPayment', 'voidPayment', 'closeWithException', 'recordReceiptPrint']))], [], auth)],
     }).compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
