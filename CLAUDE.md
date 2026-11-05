@@ -87,6 +87,16 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     error, unsaved_changes), alert, journal, queue, backups; 503 while loading.
   - `app.module.ts` — `AppModule.register(storage, extraControllers?, extraProviders?)`; provides
     StorageService, WriteQueue, BackupService, RealtimeGateway, StartupGuard (APP_GUARD).
+  - `deploy/profile.ts` — `loadDeployProfile(env)` (part of `loadConfig().deploy`): `DEPLOY_PROFILE` lan|cloud.
+    LAN binds only to a private/loopback `HOST` (default `pickLanAddress()`; `0.0.0.0`/public refused), TLS optional
+    (mkcert), no CORS. Cloud requires TLS files, an `https://` `CORS_ORIGIN`, `OFFSITE_BACKUP_DIR`; login limit 10/min.
+    Problems throw `DeployConfigError` (main refuses to start).
+  - `deploy/hardening.ts` — `applyProfile(app, profile)` after `configureApp`: CORS (only the app origin echoed),
+    `loginRateLimitMiddleware` on `POST /api/v1/auth/login` (429 TOO_MANY_ATTEMPTS, runs before the auth controller
+    WI-005 adds), HSTS with TLS; `createHttpsRedirectServer` for `HTTP_REDIRECT_PORT`.
+  - `deploy/offsite-copy.ts` — `OffsiteCopyScheduler`: nightly (IST `OFFSITE_BACKUP_TIME`) `backups.snapshot('auto')`
+    copied into `OFFSITE_BACKUP_DIR` with the same retention. `deploy/data-folder.ts` — `restrictDataFolder` (mode 700).
+  - `deploy/review.ts` + `deploy-check.ts` — `npm run check:deploy` (exit 1 on failure).
   - `main.ts` — lock folder → listen → `storage.load()` → `startAutoSave` + snapshot scheduler. Exits 1
     ("pos-api refused to start") on a held lock or a damaged journal; a corrupt workbook keeps the server up
     in recovery mode.
@@ -104,6 +114,12 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
 - `npm start` — `node apps/pos-api/dist/main.js`; env: PORT, HOST, DATA_DIR, WORKBOOK_SHEET_PASSWORD,
   SNAPSHOT_OPEN_HOURS (optional `HH:mm-HH:mm`; an invalid value fails startup), WEB_DIR (optional PWA build).
 - `npm run bench:save -w @dhaba/pos-api` — times saves of a synthetic ≥15 MB workbook (TARGET_MB env).
+- `npm run check:deploy` — reviews the deployment env (profile rules, data folder mode, off-server folder).
+- Deployment files (repo root): `deploy/windows/install-service.ps1` (NSSM + icacls + firewall),
+  `deploy/linux/install.sh` + `ecosystem.config.js` (PM2, 512 MB heap for a 1 GB VPS), `docs/deployment.md`
+  (profiles, LAN/cloud checklists, pos.local + mkcert spike). Env: DEPLOY_PROFILE, TLS_CERT_FILE, TLS_KEY_FILE,
+  HTTP_REDIRECT_PORT, CORS_ORIGIN, OFFSITE_BACKUP_DIR, OFFSITE_BACKUP_TIME. Without HOST the LAN profile binds the
+  LAN IP, so local runs use `HOST=127.0.0.1`.
 - `npm run recover` — with the server stopped, restore a corrupt live workbook from the newest valid backup
   plus journal replay.
 

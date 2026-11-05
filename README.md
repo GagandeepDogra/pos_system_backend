@@ -76,8 +76,14 @@ Environment variables (see `.env.example`; all are optional):
 
 | variable | default | meaning |
 |---|---|---|
-| `PORT` | `3000` | HTTP port |
-| `HOST` | `0.0.0.0` | interface to bind |
+| `DEPLOY_PROFILE` | `lan` | `lan` (counter PC on the dhaba Wi-Fi) or `cloud` (VPS); see [docs/deployment.md](docs/deployment.md) |
+| `PORT` | `3000` (`443` in the cloud profile) | listening port |
+| `HOST` | LAN: this PC's first private IPv4 (else `127.0.0.1`); cloud: `0.0.0.0` | interface to bind. The LAN profile refuses `0.0.0.0` and public addresses |
+| `TLS_CERT_FILE`, `TLS_KEY_FILE` | empty | certificate and key (PEM) to serve HTTPS. Required in the cloud profile (Let's Encrypt); optional on the LAN (mkcert) |
+| `HTTP_REDIRECT_PORT` | empty | with TLS: a plain-HTTP port that only redirects to HTTPS (e.g. `80`) |
+| `CORS_ORIGIN` | empty | cloud profile, required: the one `https://` origin allowed to call the API from a browser |
+| `OFFSITE_BACKUP_DIR` | empty | folder on another machine (mounted) that gets a fresh snapshot every night. Required in the cloud profile |
+| `OFFSITE_BACKUP_TIME` | `02:30` | IST time of the nightly off-server copy |
 | `DATA_DIR` | `./data` | folder for the workbook, journal, `backups/` and lock file (relative to where the server starts) |
 | `WORKBOOK_SHEET_PASSWORD` | `dhaba-pos` | password protecting the workbook's sheets |
 | `SNAPSHOT_OPEN_HOURS` | empty (all day) | IST open hours for automatic snapshots, `HH:mm-HH:mm`, e.g. `10:00-23:30` or `18:00-02:00` |
@@ -93,14 +99,37 @@ npm install
 
 ```bash
 npm run build
-DATA_DIR=./data PORT=3000 npm start
+DATA_DIR=./data HOST=127.0.0.1 PORT=3000 npm start
 ```
+
+(Without `HOST`, the server binds to this machine's LAN address, so other devices on the Wi-Fi reach it
+at `http://<LAN IP>:3000`.) The server makes the data folder readable only by its own account (mode
+700 on Linux).
 
 The API answers at `http://localhost:3000/api/v1`, and `curl http://localhost:3000/api/v1/health` returns
 `{"status":"green","workbook":{"loaded":true,...},"journal":{"last_seq":0,...},"queue":{"depth":0},"backups":{"last_snapshot":null,...}}`
 (`503` while the server is still loading). On first start in an empty folder, the server creates a fresh
 workbook and journal. If another server already runs on the same data folder, or the journal is damaged
 in the middle, the server prints `pos-api refused to start: ...` and exits with code 1.
+
+## Deploying
+
+The server runs in one of two profiles. The **LAN profile** (default) runs on a counter PC, binds only
+to the local network, and works with no internet. The **cloud profile** runs on a VPS: it serves HTTPS
+only, rate-limits login to 10 attempts per minute per IP, allows browser calls only from the app's
+origin, and copies a backup off the server every night. Installers register the server to start on
+boot: `deploy/windows/install-service.ps1` (Windows service via NSSM) and `deploy/linux/install.sh`
+(PM2). Before going live, review the settings:
+
+```bash
+npm run build
+DEPLOY_PROFILE=cloud TLS_CERT_FILE=... TLS_KEY_FILE=... CORS_ORIGIN=https://pos.example.in \
+  OFFSITE_BACKUP_DIR=/mnt/offsite npm run check:deploy
+```
+
+It prints each failure and exits with code 1 if the configuration is not acceptable (for example a
+cloud profile without an off-server backup folder). The full steps, router checklist and the
+`pos.local` name and certificate setup are in [docs/deployment.md](docs/deployment.md).
 
 ## Recovering a corrupt workbook
 
