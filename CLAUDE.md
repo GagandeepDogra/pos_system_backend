@@ -185,6 +185,13 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     ALREADY_HANDED_OVER / NOT_READY_FOR_HANDOVER `details.reasons` NOT_READY|NOT_PAID; READY KOTs → SERVED, all KOTs get
     hide_after; HANDOVER audit). Routes: `POST /orders/takeaway` in `orders.controller.ts`; `GET /takeaways` and
     `POST /takeaways/:id/handover` in `orders/takeaways.controller.ts`. Tests: `test/takeaway.spec.ts`, `test/takeaways.e2e.spec.ts`.
+  - `dashboard/dashboard.ts` + `dashboard.controller.ts` (WI-012) — `GET /dashboard` = `{business_date, role, buttons, tiles,
+    alert?}`. `buttons` = shared `DASHBOARD_BUTTONS` filtered by the role's PERMISSIONS (DINE_IN→openTableSession,
+    TAKEAWAY→createTakeaway, KITCHEN→listKitchenKots, PAYMENT→listOpenBills; Kitchen gets only KITCHEN). `tiles`:
+    `active_tables` (OPEN = same set as `GET /tables?status=OCCUPIED`), `ready_to_close_tables`, `pending_kots` (NEW/PREPARING),
+    `ready_orders` (orders with a visible READY KOT); **Admin only** `todays_sales` (SUCCESS payments of today's business date)
+    and `alert` (= `storage.saveAlert`). The keys are absent (not null) for other roles. Every write that changes these
+    counts must `tx.emit('dashboard.updated', {})` (KOT status changes now do too). Tests: `test/dashboard.e2e.spec.ts`.
   - `deploy/profile.ts` — `loadDeployProfile(env)` (part of `loadConfig().deploy`): `DEPLOY_PROFILE` lan|cloud.
     LAN binds only to a private/loopback `HOST` (default `pickLanAddress()`; `0.0.0.0`/public refused), TLS optional
     (mkcert), no CORS. Cloud requires TLS files, an `https://` `CORS_ORIGIN`, `OFFSITE_BACKUP_DIR`; login limit 10/min.

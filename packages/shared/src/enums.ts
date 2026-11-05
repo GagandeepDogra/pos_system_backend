@@ -59,6 +59,10 @@ export type PriceChangeReason = (typeof PRICE_CHANGE_REASONS)[number];
 export const SNAPSHOT_REASONS = ['auto', 'day-close', 'pre-restore'] as const;
 export type SnapshotReason = (typeof SNAPSHOT_REASONS)[number];
 
+/** The four primary dashboard buttons in 2×2 order (REQ-028); GET /dashboard lists the ones the role may use. */
+export const DASHBOARD_BUTTONS = ['DINE_IN', 'TAKEAWAY', 'KITCHEN', 'PAYMENT'] as const;
+export type DashboardButton = (typeof DASHBOARD_BUTTONS)[number];
+
 /**
  * Socket.IO events pushed after each committed write (REQ-116). Payloads carry
  * ids and the new state; a reconnecting device refetches the GET endpoints.

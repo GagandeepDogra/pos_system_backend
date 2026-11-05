@@ -147,6 +147,13 @@ owner can open it and back it up. The server:
   - `POST /api/v1/takeaways/{id}/handover` with `If-Match` marks a takeaway handed over (`200`); it must
     be Ready and `PAID`, otherwise `422` `NOT_READY_FOR_HANDOVER` with `details.reasons`
     (`NOT_READY`, `NOT_PAID`). Its Ready tickets become Served and leave the kitchen board 10 minutes later;
+- shows the dashboard (every role): `GET /api/v1/dashboard` returns the business date, the primary
+  `buttons` the caller's role may use (`DINE_IN`, `TAKEAWAY`, `KITCHEN`, `PAYMENT`; a Kitchen user gets only
+  `KITCHEN`) and live `tiles`: `active_tables` (the tables listed by `GET /api/v1/tables?status=OCCUPIED`),
+  `ready_to_close_tables`, `pending_kots` (New or Preparing) and `ready_orders`. Only an Admin also gets
+  `tiles.todays_sales` (successful payments of the business day) and `alert`, which carries
+  "Saving problem, call owner" while saving fails. Each change that moves these numbers sends a
+  `dashboard.updated` event, and the app then fetches the dashboard again;
 - serves the web app's static build (when `WEB_DIR` is set) on every path outside `/api` and `/socket.io`;
   an unknown `/api/...` path answers `404` with code `NOT_FOUND`.
 

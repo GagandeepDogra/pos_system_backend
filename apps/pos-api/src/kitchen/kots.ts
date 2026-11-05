@@ -141,6 +141,7 @@ export function advanceKot(tx: Tx, id: string, version: number, to: KotStatus, u
     kot_id: id, kot_number: kot.kot_number, order_id: kot.order_id, status: to, row_version: updated.row_version,
     hide_after: updated.hide_after, table_id: order?.table_id ?? null, table_label: order?.table_label_snapshot ?? null, token: order?.token ?? null,
   });
+  tx.emit('dashboard.updated', {});
   return updated;
 }
 
