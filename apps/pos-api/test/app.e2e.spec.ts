@@ -27,7 +27,7 @@ describe('pos-api bootstrap (REQ-002, REQ-104)', () => {
 
   it('REQ-002: starts with only a workbook (no database) and reports green', async () => {
     const res = await request(app.getHttpServer()).get('/api/v1/health').expect(200);
-    expect(res.body).toEqual({ status: 'green', workbook: { loaded: true } });
+    expect(res.body).toMatchObject({ status: 'green', workbook: { loaded: true }, journal: { last_seq: 0, last_error: null } });
   });
 
   it('reports 503 until the workbook is loaded', async () => {

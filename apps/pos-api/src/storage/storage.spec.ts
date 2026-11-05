@@ -161,13 +161,17 @@ describe('storage service (REQ-002, REQ-104)', () => {
     storage.close();
   });
 
-  it('REQ-110: refuses to load an invalid workbook and releases the lock', async () => {
+  it('REQ-110: an invalid workbook is not loaded; writes are blocked and the lock stays held', async () => {
     const dir = tempDir();
     const bad = sampleData();
     bad.orders[0].status = 'DONE' as never;
     await writeWorkbookFile(path.join(dir, WORKBOOK_FILE), bad, 'x');
     const storage = new StorageService({ dataDir: dir, sheetPassword: 'x' });
-    await expect(storage.open()).rejects.toThrow(WorkbookValidationError);
+    await storage.open();
+    expect(storage.state).toBe('corrupt');
+    expect(storage.recoveryOffer!.errors.join()).toMatch(/DONE/);
+    expect(fs.existsSync(path.join(dir, LOCK_FILE))).toBe(true);
+    storage.close();
     expect(fs.existsSync(path.join(dir, LOCK_FILE))).toBe(false);
   });
 });

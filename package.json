@@ -12,6 +12,7 @@
   "scripts": {
     "build": "npm run build -w @dhaba/shared && npm run build -w @dhaba/pos-api",
     "start": "npm run start -w @dhaba/pos-api",
+    "recover": "npm run recover -w @dhaba/pos-api",
     "test": "npm test -w @dhaba/pos-api",
     "test:cov": "npm run test:cov -w @dhaba/pos-api"
   }

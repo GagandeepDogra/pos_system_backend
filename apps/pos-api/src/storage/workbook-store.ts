@@ -80,6 +80,14 @@ export class WorkbookStore {
     this.addToIndexes(sheet, r);
   }
 
+  /** Removes a row. Only the write queue's rollback of an uncommitted insert may use it. */
+  remove(sheet: SheetName, id: string): void {
+    const old = this.rows.get(sheet)!.get(id);
+    if (!old) return;
+    this.removeFromIndexes(sheet, old);
+    this.rows.get(sheet)!.delete(id);
+  }
+
   /** Plain copy of every sheet, for saving. */
   toData(): WorkbookData {
     return Object.fromEntries(SHEETS.map((d) => [d.name, [...this.rows.get(d.name)!.values()]])) as unknown as WorkbookData;

@@ -52,3 +52,12 @@ export function sampleData(): WorkbookData {
 export function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'pos-api-test-'));
 }
+
+/** sampleData() plus counters that already account for its order, KOT and line ids. */
+export function seededData(): WorkbookData {
+  const data = sampleData();
+  for (const key of ['ORDER', 'KOT:2026-11-05', 'ORDER_ITEM']) {
+    data.counters.push({ id: key, counter_key: key, next_value: 2, updated_at: NOW, row_version: 1 });
+  }
+  return data;
+}

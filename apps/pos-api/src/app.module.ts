@@ -1,16 +1,26 @@
-import { DynamicModule, Module } from '@nestjs/common';
+import { DynamicModule, Module, Type } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { StartupGuard } from './common/startup.guard';
 import { HealthController } from './health/health.controller';
 import { StorageService } from './storage/storage.service';
+import { WriteQueue } from './storage/write-queue';
 
 @Module({})
 export class AppModule {
-  /** The storage service is opened (locked and loaded) before Nest starts. */
-  static register(storage: StorageService): DynamicModule {
+  /**
+   * The folder lock is taken before Nest starts; the workbook may still be
+   * loading (StartupGuard answers 503 until it is ready).
+   */
+  static register(storage: StorageService, extraControllers: Type[] = []): DynamicModule {
     return {
       module: AppModule,
-      controllers: [HealthController],
-      providers: [{ provide: StorageService, useValue: storage }],
-      exports: [StorageService],
+      controllers: [HealthController, ...extraControllers],
+      providers: [
+        { provide: StorageService, useValue: storage },
+        { provide: WriteQueue, useValue: storage.queue },
+        { provide: APP_GUARD, useClass: StartupGuard },
+      ],
+      exports: [StorageService, WriteQueue],
     };
   }
 }

@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
+    "recover": "node dist/recover.js",
     "test": "jest --coverage",
     "test:cov": "jest --coverage"
   },

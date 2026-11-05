@@ -10,7 +10,16 @@ owner can open it and back it up. The server:
 - loads all 15 worksheets into indexed memory and serves reads from memory, so it keeps answering even
   while the file is open or locked by another program;
 - validates the workbook on load (exact sheet set, columns, types, allowed status values, unique ids,
-  references, schema version) and refuses to start on an invalid file;
+  references, schema version) and upgrades an older schema version on a copy, keeping the original in
+  `backups/`;
+- applies every change through one write queue, one change at a time, and writes each change as one line
+  to the journal file `dhaba-pos.journal` (flushed to disk with fsync) before it answers. If the server
+  crashes or loses power before the workbook is saved, it replays the journal at the next start, so no
+  confirmed order, KOT or payment is lost. A change cut off mid-write is either fully there or absent;
+- answers `503` on every route until loading, migration and journal replay have finished;
+- if the workbook cannot be read, keeps running with writes blocked: `/api/v1/health` turns red and offers
+  the newest valid backup in `backups/` plus the journal changes made after it (see "Recovering a corrupt
+  workbook");
 - saves the workbook atomically (temp file + rename) with protected sheets: bold frozen headers, locked ID
   columns, dropdown validation on status/enum columns, and a sheet password.
 
@@ -37,7 +46,7 @@ Environment variables (see `.env.example`; all are optional):
 |---|---|---|
 | `PORT` | `3000` | HTTP port |
 | `HOST` | `0.0.0.0` | interface to bind |
-| `DATA_DIR` | `./data` | folder for the workbook and lock file (relative to where the server starts) |
+| `DATA_DIR` | `./data` | folder for the workbook, journal, `backups/` and lock file (relative to where the server starts) |
 | `WORKBOOK_SHEET_PASSWORD` | `dhaba-pos` | password protecting the workbook's sheets |
 
 ## Install
@@ -54,9 +63,24 @@ DATA_DIR=./data PORT=3000 npm start
 ```
 
 The API answers at `http://localhost:3000/api/v1`, and `curl http://localhost:3000/api/v1/health` returns
-`{"status":"green","workbook":{"loaded":true}}`. On first start in an empty folder, the server creates a fresh
-workbook. If another server already runs on the same data folder, the second one prints
-`pos-api refused to start: ...` and exits with code 1.
+`{"status":"green","workbook":{"loaded":true,...},"journal":{"last_seq":0,...},"queue":{"depth":0}}`
+(`503` while the server is still loading). On first start in an empty folder, the server creates a fresh
+workbook and journal. If another server already runs on the same data folder, or the journal is damaged
+in the middle, the server prints `pos-api refused to start: ...` and exits with code 1.
+
+## Recovering a corrupt workbook
+
+When `dhaba-pos.xlsx` cannot be read, the server logs the problem, blocks writes, and `/api/v1/health`
+returns `"status":"red"` with a `recovery` block naming the newest valid backup and how many journal
+changes would be replayed on top of it. To accept it, stop the server and run:
+
+```bash
+DATA_DIR=./data npm run recover
+```
+
+The corrupt file is kept as `dhaba-pos.xlsx.corrupt-<time>`, the backup plus the journal becomes the live
+workbook, and the server can be started again. Without a valid backup the command exits with an error and
+changes nothing.
 
 ## Test
 
@@ -64,4 +88,7 @@ workbook. If another server already runs on the same data folder, the second one
 npm test
 ```
 
-This runs all tests with coverage and fails if the storage or billing code drops below 80% coverage.
+This runs all tests with coverage and fails if the storage or billing code drops below 80% coverage. The
+tests include a crash test that kills a writing server process with `kill -9` at random points and checks
+that every confirmed change is present exactly once after restart, and a lunch-rush simulation with
+double-tapped requests and a mid-service price change.
