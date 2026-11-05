@@ -21,6 +21,7 @@ import { WriteQueue } from './write-queue';
 
 export const WORKBOOK_FILE = 'dhaba-pos.xlsx';
 export const BACKUP_DIR = 'backups';
+export const ARCHIVE_DIR = 'archive';
 
 export interface StorageOptions {
   dataDir: string;
@@ -71,7 +72,8 @@ export function replayJournal(store: WorkbookStore, entries: JournalEntry[], aft
     if (e.seq <= afterSeq) continue;
     for (const op of e.ops) {
       const id = op.r.id as string;
-      if (store.get(op.s, id)) store.replace(op.s, op.r as never);
+      if (op.t === 'd') store.remove(op.s, id);
+      else if (store.get(op.s, id)) store.replace(op.s, op.r as never);
       else store.insert(op.s, op.r as never);
     }
     applied++;
@@ -181,6 +183,15 @@ export class StorageService {
 
   get backupDir(): string {
     return path.join(this.options.dataDir, BACKUP_DIR);
+  }
+
+  /** Read-only monthly archive workbooks (REQ-108). */
+  get archiveDir(): string {
+    return path.join(this.options.dataDir, ARCHIVE_DIR);
+  }
+
+  get sheetPassword(): string {
+    return this.options.sheetPassword;
   }
 
   assertWritable(): void {

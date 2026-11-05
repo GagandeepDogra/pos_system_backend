@@ -22,7 +22,7 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     mutate with `replace({...row, ...})`. Only the write queue should call insert/replace.
   - `storage/folder-lock.ts` — `FolderLock` on `<DATA_DIR>/.pos-api.lock` (O_EXCL + pid liveness).
   - `storage/journal.ts` — `Journal` on `<DATA_DIR>/dhaba-pos.journal`: one line per committed change,
-    `<sha256-16> {"seq","at","ops":[{t:'i'|'u', s:sheet, r:row}]}`, appended with writeSync + fsyncSync.
+    `<sha256-16> {"seq","at","ops":[{t:'i'|'u'|'d', s:sheet, r:row}]}` ('d' = archive prune, r = {id}), appended with writeSync + fsyncSync.
     A damaged last line = torn write (cut off at open); damaged earlier = `JournalCorruptError` (refuse start).
     `compact(seq)` drops entries ≤ seq — only the backup work should call it, with the seq of a verified
     snapshot (recovery replays the journal past a backup's `last_journal_seq`). Save does NOT compact.
@@ -214,6 +214,23 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     `ready_orders` (orders with a visible READY KOT); **Admin only** `todays_sales` (SUCCESS payments of today's business date)
     and `alert` (= `storage.saveAlert`). The keys are absent (not null) for other roles. Every write that changes these
     counts must `tx.emit('dashboard.updated', {})` (KOT status changes now do too). Tests: `test/dashboard.e2e.spec.ts`.
+  - `day-close/day-close.ts` + `day-close.controller.ts` (WI-016) — `GET /admin/day-close` (`dayCloseSummary`: business date from
+    `auth.now()`, `open_orders` = OPEN/BILLED of any date with `highlight:true`, `cash_total` = CASH SUCCESS of the business date,
+    `can_close`), `POST /admin/day-close` (`closeDay`; Idempotency-Key kept in memory 24 h per user → 200 replay). The close runs
+    inside `queue.exclusive`: 409 OPEN_ORDERS_REMAIN (`details.orders`) → `resetAvailability({all:true})` + DAY_CLOSE audit +
+    `dashboard.updated` in one commit → `storage.save()` → `backups.dayCloseSnapshot()` (failure → 503 SNAPSHOT_FAILED) → archive.
+  - `storage/archive.ts` (WI-016, REQ-108) — `MonthlyArchiver.archiveDue(commit, closedDate, …)`: months < closedDate's month still in
+    live, plus its own month on the last day (`monthsToArchive`). `selectMonth` = orders by business_date month (+ merge/KOT closure),
+    their kots/order_items/payments/exceptions, audit_log by created_at month (shared `ARCHIVED_SHEETS`). Writes
+    `<DATA_DIR>/archive/YYYY-MM.xlsx` (later parts `YYYY-MM-<n>.xlsx`, `listArchiveParts`) as a full 15-sheet workbook (reference
+    sheets copied, counters empty) via `writeArchiveFile` (0444, link — never replaces), re-reads and verifies counts/ids, then prunes
+    live with `tx.remove` (journal op `t:'d'`, replayed at startup) + an ARCHIVE audit row. Resumable: rows already in a part with the
+    same row_version are pruned without rewriting. **WI-015 reports read live + `listArchiveParts(storage.archiveDir, month)`
+    (`readWorkbookFile`); for an id in several parts the later part wins.** `writeWorkbookFile` throws `ArchiveReadOnlyError` for
+    archive names in `archive/` or any read-only target.
+  - `WriteQueue.exclusive(async commit => …)` holds the queue for multi-step async work (day close; **WI-017's restore swap should use
+    it** — "take write lock; queued writes wait"). Inside, use `commit(change)`, never `queue.run` (deadlock). `Tx.remove` is only for
+    the archive prune (REQ-082: features never delete).
   - `deploy/profile.ts` — `loadDeployProfile(env)` (part of `loadConfig().deploy`): `DEPLOY_PROFILE` lan|cloud.
     LAN binds only to a private/loopback `HOST` (default `pickLanAddress()`; `0.0.0.0`/public refused), TLS optional
     (mkcert), no CORS. Cloud requires TLS files, an `https://` `CORS_ORIGIN`, `OFFSITE_BACKUP_DIR`; login limit 10/min.

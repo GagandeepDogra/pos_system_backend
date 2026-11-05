@@ -190,6 +190,18 @@ owner can open it and back it up. The server:
   `tiles.todays_sales` (successful payments of the business day) and `alert`, which carries
   "Saving problem, call owner" while saving fails. Each change that moves these numbers sends a
   `dashboard.updated` event, and the app then fetches the dashboard again;
+- closes the business day (Admin only): `GET /api/v1/admin/day-close` lists every Open or Billed order
+  (`open_orders`, each flagged `highlight: true` for red; each must be paid or closed by exception), the
+  cash total of the business day for counting the drawer (`cash_total`, successful Cash payments only, voided
+  ones excluded) and `can_close`. `POST /api/v1/admin/day-close` (`Idempotency-Key`) answers `409`
+  `OPEN_ORDERS_REMAIN` while any Open or Billed order is left. Otherwise it sets every item back to available
+  for today, saves the workbook, takes a `day-close` snapshot into `backups/` and, when a month has ended
+  (the closed business day is the month's last day, or an earlier month is still in the workbook), moves
+  that month's orders, tickets, lines, payments, exceptions and audit rows into the read-only archive
+  workbook `archive/YYYY-MM.xlsx` (see below). `201` returns the snapshot name, the snapshot list, the reset
+  items and the archive results; the same key again returns the same result with `200`. Writes from other
+  devices wait while the close runs. Token, ticket and bill numbers restart at 1 on their own at the
+  business-day cut-off (04:00 by default);
 - serves the web app's static build (when `WEB_DIR` is set) on every path outside `/api` and `/socket.io`;
   an unknown `/api/...` path answers `404` with code `NOT_FOUND`.
 
@@ -203,11 +215,22 @@ kept; for older days one snapshot per day is kept (the day-close one when there 
 older snapshots are deleted. Other files in `backups/` (such as pre-migration copies) are never deleted.
 `/api/v1/health` reports the last snapshot and the last snapshot error in its `backups` block.
 
+### Monthly archive
+
+At month end the day close copies the month's transaction rows (orders by business date, with their
+kitchen tickets, lines, payments and exceptions; audit rows by date) into `archive/YYYY-MM.xlsx` in the
+data folder. The archive is a complete workbook (it also holds the staff, tables and menu as they were), is
+re-read to check that every row count and id matches, is made read-only, and only then are the rows removed
+from the live workbook, which keeps the live file small. The server refuses to write to an archive file.
+If the server stops halfway, the next day close finishes the job without writing the archive again. Rows of
+an archived month that are added later (for example orders taken after the month-end close but before the
+04:00 cut-off) go into a further file, `archive/YYYY-MM-2.xlsx`, at a later close.
+
 Order lines copy the item name, variant name, food type and unit price at the moment of ordering, so later
 menu edits never change old bills. PINs are stored only as bcrypt hashes.
 
 So far the HTTP API has the health endpoint, `GET /api/v1/health` (no login needed), sign-in and
-approvals, the table grid and dine-in session routes, the menu and availability routes, the kitchen routes, the bill and discount routes and the payment routes above, plus the Socket.IO channel.
+approvals, the table grid and dine-in session routes, the menu and availability routes, the kitchen routes, the bill and discount routes, the payment routes, the takeaway, dashboard, admin and day-close routes above, plus the Socket.IO channel.
 
 ## Stack
 

@@ -59,6 +59,13 @@ export type PriceChangeReason = (typeof PRICE_CHANGE_REASONS)[number];
 export const SNAPSHOT_REASONS = ['auto', 'day-close', 'pre-restore'] as const;
 export type SnapshotReason = (typeof SNAPSHOT_REASONS)[number];
 
+/**
+ * Transaction sheets moved into archive/YYYY-MM.xlsx at month end (REQ-108). Reports read these from
+ * the live workbook plus the archive files of the months a range needs.
+ */
+export const ARCHIVED_SHEETS = ['orders', 'kots', 'order_items', 'payments', 'exceptions', 'audit_log'] as const;
+export type ArchivedSheet = (typeof ARCHIVED_SHEETS)[number];
+
 /** The four primary dashboard buttons in 2×2 order (REQ-028); GET /dashboard lists the ones the role may use. */
 export const DASHBOARD_BUTTONS = ['DINE_IN', 'TAKEAWAY', 'KITCHEN', 'PAYMENT'] as const;
 export type DashboardButton = (typeof DASHBOARD_BUTTONS)[number];

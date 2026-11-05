@@ -29,7 +29,7 @@ export interface TxEvent {
   payload: Record<string, unknown>;
 }
 
-type Undo = { t: 'i'; s: SheetName; id: string } | { t: 'u'; s: SheetName; old: Row };
+type Undo = { t: 'i'; s: SheetName; id: string } | { t: 'u'; s: SheetName; old: Row } | { t: 'd'; s: SheetName; old: Row };
 
 export class Tx {
   readonly ops: JournalOp[] = [];
@@ -77,6 +77,18 @@ export class Tx {
     return copy;
   }
 
+  /**
+   * Deletes a row. Records are never deleted by features (REQ-082); only the
+   * monthly archive uses this, after the rows are verified in the archive file.
+   */
+  remove(sheet: SheetName, id: string): void {
+    const old = this.store.get(sheet, id);
+    if (!old) throw new NotFoundError(sheet, id);
+    this.store.remove(sheet, id);
+    this.undo.push({ t: 'd', s: sheet, old: old as unknown as Row });
+    this.ops.push({ t: 'd', s: sheet, r: { id } });
+  }
+
   /** Returns the row if its row_version equals the If-Match value; otherwise 404 or 409 with the current row. */
   expectVersion<S extends SheetName>(sheet: S, id: string, ifMatch: number): Rows<S> {
     const row = this.store.get(sheet, id);
@@ -120,6 +132,7 @@ export class Tx {
   rollback(): void {
     for (const u of [...this.undo].reverse()) {
       if (u.t === 'i') this.store.remove(u.s, u.id);
+      else if (u.t === 'd') this.store.insert(u.s, u.old as never);
       else this.store.replace(u.s, u.old as never);
     }
     this.undo.length = 0;
@@ -157,6 +170,18 @@ export class WriteQueue {
   run<T>(change: (tx: Tx) => T): Promise<T> {
     this.pending++;
     const result = this.tail.then(() => this.execute(change));
+    this.tail = result.catch(() => undefined).finally(() => this.pending--);
+    return result;
+  }
+
+  /**
+   * Runs `work` with the queue held: changes queued meanwhile wait until it
+   * ends (day close / archive, restore swap). Inside, `commit(change)` runs a
+   * change at once — never call `run` from `work`, it would wait forever.
+   */
+  exclusive<T>(work: (commit: <R>(change: (tx: Tx) => R) => R) => Promise<T>): Promise<T> {
+    this.pending++;
+    const result = this.tail.then(() => work((change) => this.execute(change)));
     this.tail = result.catch(() => undefined).finally(() => this.pending--);
     return result;
   }

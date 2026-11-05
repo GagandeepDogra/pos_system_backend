@@ -10,8 +10,8 @@ import { Row } from './workbook-codec';
 export const JOURNAL_FILE = 'dhaba-pos.journal';
 
 export interface JournalOp {
-  /** i = insert, u = replace (update) */
-  t: 'i' | 'u';
+  /** i = insert, u = replace (update), d = delete (only the monthly archive prune; `r` holds just the id) */
+  t: 'i' | 'u' | 'd';
   s: SheetName;
   r: Row;
 }
