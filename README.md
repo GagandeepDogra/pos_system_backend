@@ -84,6 +84,25 @@ owner can open it and back it up. The server:
     Hindi/English alert for the cashier;
   - every item switched off is available again at the start of the next business day (the day rolls
     over at the settings' token reset time, 04:00 by default);
+- sends orders to the kitchen and runs the kitchen board (all need a login):
+  - `POST /api/v1/orders/{id}/kots` (Admin, Cashier; `Idempotency-Key` header) with
+    `{"lines":[{"variant_id":"VAR-1","quantity":2,"note":"No onion"}]}` makes one kitchen order ticket (KOT)
+    of exactly those lines, priced from the menu by the server, and answers `201` with the KOT, its
+    number and its lines. Repeating the same key answers `200` with the same KOT and writes nothing. An
+    empty cart, a quantity outside 1–99 or a note over 80 characters is a `400`. If an item is not
+    available today the send is refused with `422 ITEM_UNAVAILABLE`, and `details.lines` lists only the
+    lines that were refused. Sending to a printed (billed) order reopens it and records the reopening;
+  - `GET /api/v1/kitchen/kots` lists the tickets still on the board, oldest first, without any price or
+    amount: table or token, item and variant names, quantity, note, cancelled lines, minutes waiting and a
+    `late` flag (waiting longer than the settings' late-KOT minutes, 15 by default);
+  - `PATCH /api/v1/kots/{id}/status` with `If-Match` and `{"status":"PREPARING"|"READY"|"SERVED"}` moves a
+    ticket one step (NEW → PREPARING → READY → SERVED); any other step is a `422`. A served ticket leaves
+    the board 10 minutes later. Marking food ready never closes a table;
+  - `POST /api/v1/order-items/{id}/cancel` with `If-Match` and `{"cancel_reason":"..."}` cancels one sent
+    line (the row is kept). Once the kitchen has started the ticket, a Cashier needs an Admin approval
+    (`X-Approval-Token` from `POST /api/v1/auth/approvals`) and an exception row records both people. A
+    ticket whose lines are all cancelled is cancelled; an unpaid order with nothing left is cancelled and
+    its table becomes Available;
 - serves the web app's static build (when `WEB_DIR` is set) on every path outside `/api` and `/socket.io`;
   an unknown `/api/...` path answers `404` with code `NOT_FOUND`.
 
@@ -101,7 +120,7 @@ Order lines copy the item name, variant name, food type and unit price at the mo
 menu edits never change old bills. PINs are stored only as bcrypt hashes.
 
 So far the HTTP API has the health endpoint, `GET /api/v1/health` (no login needed), sign-in and
-approvals, the table grid and dine-in session routes, the menu and availability routes above, plus the Socket.IO channel.
+approvals, the table grid and dine-in session routes, the menu and availability routes and the kitchen routes above, plus the Socket.IO channel.
 
 ## Stack
 

@@ -143,6 +143,17 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     variants + `starting_price` + `orderable`; Kitchen: no `price`/`starting_price`; q < 2 chars → 400 SEARCH_TOO_SHORT),
     `PATCH /items/:id/availability` (If-Match, `{available_today}`), `POST /kitchen/items/:id/out-of-stock`. WI-013's
     category/item edits should emit `menu.availability_changed` too so menus refetch.
+  - `kitchen/kots.ts` + `kots.controller.ts` (WI-008) — `POST /orders/:id/kots` (body `{lines:[{variant_id, quantity 1–99,
+    note ≤80}]}`, `runIdempotent('kots','idempotency_key')`, 400 EMPTY_CART, 422 ITEM_UNAVAILABLE `details.lines` =
+    rejected lines only, BILLED → OPEN + BILL_REOPEN exception (reason_code NEW_ITEMS); response = Kot + `lines`),
+    `GET /kitchen/kots` (`kitchenBoard(store, auth.now())`: hide_after null or in the future, oldest first, money-free
+    `kitchenCard` built field by field — never spread a row into it; `late` = NEW/PREPARING and minutes_waiting >
+    `late_kot_minutes`), `PATCH /kots/:id/status` (`KOT_NEXT` one step, 422 ILLEGAL_TRANSITION; SERVED sets served_at
+    + hide_after = now + 10 min), `POST /order-items/:id/cancel` (`cancel_reason` or `reason`; KOT past NEW → Admin
+    caller or consumed approval token + CANCEL_AFTER_START exception; all lines cancelled → KOT CANCELLED with
+    hide_after; no ACTIVE line and no SUCCESS payment → order CANCELLED; returns orderView). **WI-010 calls
+    `hideOrderKots(tx, orderId, userId)` when an order becomes PAID.** Ids: order items `OI-NNNNNN` (counter
+    `ORDER_ITEM`), exceptions `EXC-NNNNNN` (counter `EXCEPTION`). `kot.created` carries the kitchen card.
   - `deploy/profile.ts` — `loadDeployProfile(env)` (part of `loadConfig().deploy`): `DEPLOY_PROFILE` lan|cloud.
     LAN binds only to a private/loopback `HOST` (default `pickLanAddress()`; `0.0.0.0`/public refused), TLS optional
     (mkcert), no CORS. Cloud requires TLS files, an `https://` `CORS_ORIGIN`, `OFFSITE_BACKUP_DIR`; login limit 10/min.

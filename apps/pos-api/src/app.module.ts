@@ -5,6 +5,7 @@ import { AuthGuard } from './auth/auth.guard';
 import { AuthOptions, AuthService } from './auth/auth.service';
 import { StartupGuard } from './common/startup.guard';
 import { HealthController } from './health/health.controller';
+import { KotsController } from './kitchen/kots.controller';
 import { MenuController } from './menu/menu.controller';
 import { OrdersController } from './orders/orders.controller';
 import { RealtimeGateway } from './realtime/realtime.gateway';
@@ -14,7 +15,7 @@ import { WriteQueue } from './storage/write-queue';
 import { TablesController } from './tables/tables.controller';
 
 /** Feature controllers of the API contract; every app (main.ts and tests) gets them. */
-export const FEATURE_CONTROLLERS: Type[] = [TablesController, OrdersController, MenuController];
+export const FEATURE_CONTROLLERS: Type[] = [TablesController, OrdersController, MenuController, KotsController];
 
 @Module({})
 export class AppModule {
