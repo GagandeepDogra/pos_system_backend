@@ -23,9 +23,13 @@ export async function writeWorkbookFile(file: string, data: WorkbookData, passwo
   try {
     await handle.writeFile(buffer);
     await handle.sync();
-  } finally {
-    await handle.close();
+  } catch (err) {
+    // Disk full or similar: never leave a partial temp file behind; the live file is untouched.
+    await handle.close().catch(() => undefined);
+    await fsp.rm(tmp, { force: true });
+    throw err;
   }
+  await handle.close();
   try {
     await fsp.rename(tmp, file);
   } catch (err) {

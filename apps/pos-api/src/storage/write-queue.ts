@@ -4,10 +4,11 @@
 // then appends one journal line and fsyncs it. Only after that does the
 // change count as committed. If the change throws or the journal write fails,
 // every row it touched is put back as it was, so readers never see it.
-import { SheetName, WorkbookRows } from '@dhaba/shared';
+import { RealtimeEvent, SheetName, WorkbookRows } from '@dhaba/shared';
 import { JournalUnavailableError, NotFoundError, RowVersionConflictError } from '../common/errors';
 import { nowIst } from '../common/time';
 import { Journal, JournalEntry, JournalOp, JournalWriteError } from './journal';
+import { AuditColumns, DEFAULT_RESET_TIME, businessDate, createStamp, updateStamp } from './repository';
 import { Row } from './workbook-codec';
 import { WorkbookStore } from './workbook-store';
 
@@ -22,11 +23,18 @@ export interface QueueHost {
   journalResult(error: Error | null): void;
 }
 
+/** A realtime event queued by a change; sent only after its journal line is on disk. */
+export interface TxEvent {
+  event: RealtimeEvent;
+  payload: Record<string, unknown>;
+}
+
 type Undo = { t: 'i'; s: SheetName; id: string } | { t: 'u'; s: SheetName; old: Row };
 
 export class Tx {
   readonly ops: JournalOp[] = [];
   readonly undo: Undo[] = [];
+  readonly events: TxEvent[] = [];
 
   constructor(
     private readonly store: WorkbookStore,
@@ -77,6 +85,27 @@ export class Tx {
     return row;
   }
 
+  /** Inserts a new row with audit columns stamped for `userId` (row_version 1). */
+  create<S extends SheetName>(sheet: S, fields: Omit<Rows<S>, keyof AuditColumns>, userId: string): Rows<S> {
+    return this.insert(sheet, { ...fields, ...createStamp(this.now, userId) } as unknown as Rows<S>);
+  }
+
+  /** Replaces `row` with `patch` applied, stamping updated_at/by and row_version + 1. */
+  update<S extends SheetName>(sheet: S, row: Rows<S>, patch: Partial<Rows<S>>, userId: string): Rows<S> {
+    return this.replace(sheet, updateStamp(row as never, patch as never, this.now, userId) as Rows<S>);
+  }
+
+  /** business_date of this change, rolling over at Settings.token_reset_time (REQ-097). */
+  businessDate(): string {
+    const settings = this.store.all('settings')[0];
+    return businessDate(this.now, settings?.token_reset_time || DEFAULT_RESET_TIME);
+  }
+
+  /** Queues a realtime event; it is emitted only if this change commits (REQ-116). */
+  emit(event: RealtimeEvent, payload: Record<string, unknown>): void {
+    this.events.push({ event, payload });
+  }
+
   /** Next value of a counter (e.g. ORDER, TOKEN:2026-11-05); the first call returns 1. */
   nextCounter(key: string): number {
     const row = this.store.findUnique('counters', 'counter_key', key);
@@ -95,6 +124,7 @@ export class Tx {
     }
     this.undo.length = 0;
     this.ops.length = 0;
+    this.events.length = 0;
   }
 }
 
@@ -104,9 +134,11 @@ export interface IdempotentResult<R> {
   row: R;
 }
 
+export type CommitListener = (entry: JournalEntry, events: TxEvent[]) => void;
+
 export class WriteQueue {
   private tail: Promise<unknown> = Promise.resolve();
-  private readonly listeners: ((entry: JournalEntry) => void)[] = [];
+  private readonly listeners: CommitListener[] = [];
   private pending = 0;
 
   constructor(private readonly host: QueueHost) {}
@@ -117,7 +149,7 @@ export class WriteQueue {
   }
 
   /** Called after each commit (realtime events, coalesced save). Listener errors are ignored. */
-  onCommit(listener: (entry: JournalEntry) => void): void {
+  onCommit(listener: CommitListener): void {
     this.listeners.push(listener);
   }
 
@@ -175,7 +207,7 @@ export class WriteQueue {
     this.host.journalResult(null);
     for (const l of this.listeners) {
       try {
-        l(entry);
+        l(entry, tx.events);
       } catch {
         // A listener must never undo a committed change.
       }

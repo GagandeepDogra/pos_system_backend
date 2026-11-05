@@ -63,22 +63,47 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
   - `billing/order-line.ts` — `buildOrderLine(item, variant, input)` copies the snapshots and the price.
   - `auth/pin.ts` — `hashPin` (bcrypt cost 10, PIN of 4+ digits), `verifyPin`.
   - `common/time.ts` — `nowIst()` gives timestamps with +05:30.
-  - `health/health.controller.ts` — minimal `GET /api/v1/health`; extend it with save/journal status.
-  - `app.module.ts` — `AppModule.register(storage, extraControllers?)`; provides StorageService, WriteQueue,
-    StartupGuard (APP_GUARD).
-  - `main.ts` — lock folder → listen → `storage.load()`. Exits 1 ("pos-api refused to start") on a held
-    lock or a damaged journal; a corrupt workbook keeps the server up in recovery mode.
+  - `storage/repository.ts` — `createStamp`, `updateStamp` (row_version +1, audit columns in a patch are
+    ignored), `businessDate(at, resetTime='04:00')` (IST), `counterKeys` (ORDER global; TOKEN:/KOT:/BILL:<date>)
+    and `idFormats` (ORD-YYYYMMDD-NNNN, T-NNN, B-YYYYMMDD-NNN, KOT-YYYYMMDD-NNNN, `seq(prefix,n)` = PFX-NNNNNN).
+    In the queue use `tx.create(sheet, fields, userId)`, `tx.update(sheet, row, patch, userId)`,
+    `tx.businessDate()` (reads Settings.token_reset_time) and `tx.emit(event, payload)`.
+  - `storage/save-scheduler.ts` — `SaveScheduler` (REQ-107): first commit of a burst arms a 2 s timer, one
+    save per burst; failed save → `onError` + retry in 2 s. `storage.startAutoSave({clock?})` (main.ts calls it
+    after load; `close()` stops it), `storage.saveScheduler.flush()` for day close/restore.
+    `storage.saveAlert` = the 'Saving problem, call owner' alert (dashboard WI-012 and /health show it).
+  - `common/validation.ts` — `FormulaStripPipe` (body strings lose leading `= + - @`; plain numbers kept),
+    `createValidationPipe()` (whitelist + forbidNonWhitelisted → 400 VALIDATION_FAILED), `@ServerDerived()`
+    for fields a client may send but the server derives (price, unit_price, totals): accepted then dropped.
+  - `common/headers.ts` — `@IfMatch()` (missing → 428 IF_MATCH_REQUIRED, bad → 400) and `@IdempotencyKey()`
+    (missing → 400). Then `tx.expectVersion(sheet, id, version)` → 409 ROW_VERSION_CONFLICT + details.current.
+  - `common/error.filter.ts` — `ApiErrorFilter`: every error (Nest 404s included) → `{code, message_en,
+    message_hi, details}`.
+  - `realtime/realtime.gateway.ts` — Socket.IO (`/socket.io`); broadcasts each committed tx's `tx.emit` events
+    with `seq` and `at` added. Event names = shared `REALTIME_EVENTS`. Rolled-back changes emit nothing.
+  - `app.setup.ts` — `configureApp(app, {webDir})`: prefix, pipes, filter, IoAdapter, static PWA (WEB_DIR) on
+    non-/api, non-/socket.io paths. **Tests must call it too** instead of `setGlobalPrefix`.
+  - `health/health.controller.ts` — `GET /api/v1/health` (no auth): status green/red, workbook (last save,
+    error, unsaved_changes), alert, journal, queue, backups; 503 while loading.
+  - `app.module.ts` — `AppModule.register(storage, extraControllers?, extraProviders?)`; provides
+    StorageService, WriteQueue, BackupService, RealtimeGateway, StartupGuard (APP_GUARD).
+  - `main.ts` — lock folder → listen → `storage.load()` → `startAutoSave` + snapshot scheduler. Exits 1
+    ("pos-api refused to start") on a held lock or a damaged journal; a corrupt workbook keeps the server up
+    in recovery mode.
 - `apps/pos-api/test` — fixtures (`sampleData()`, `seededData()` = sample + counters, `tempDir()`), e2e
   specs, `support/pos-ops.ts` (stand-in order/KOT/payment changes for durability tests — replace with the
   real services' calls when they exist), `chaos.spec.ts` (spawns `support/chaos-writer.ts` through
-  `support/ts-register.js` and kill -9s it), `lunch-rush.spec.ts`.
+  `support/ts-register.js` and kill -9s it), `lunch-rush.spec.ts`, `core.e2e.spec.ts` with
+  `support/demo.controller.ts` (test-only routes showing the controller pattern: DTO + `@IdempotencyKey` +
+  `runIdempotent` + `tx.create` + `tx.emit`; socket.io-client checks events), `support/save-bench.ts`.
 
 ## Commands (from repo root)
 - `npm install`
 - `npm test` — jest with coverage; thresholds of 80% on `src/storage/` and `src/billing/` (jest.config.js).
 - `npm run build` — builds shared, then pos-api (`tsc -p tsconfig.build.json`).
 - `npm start` — `node apps/pos-api/dist/main.js`; env: PORT, HOST, DATA_DIR, WORKBOOK_SHEET_PASSWORD,
-  SNAPSHOT_OPEN_HOURS (optional `HH:mm-HH:mm`; an invalid value fails startup).
+  SNAPSHOT_OPEN_HOURS (optional `HH:mm-HH:mm`; an invalid value fails startup), WEB_DIR (optional PWA build).
+- `npm run bench:save -w @dhaba/pos-api` — times saves of a synthetic ≥15 MB workbook (TARGET_MB env).
 - `npm run recover` — with the server stopped, restore a corrupt live workbook from the newest valid backup
   plus journal replay.
 
@@ -95,5 +120,9 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
 - Every write goes through `storage.queue` (never `store.insert/replace` directly); the journal line is
   fsync'd before the promise resolves. Creating POSTs with an Idempotency-Key use `runIdempotent`.
   Writes outside the queue are only the derived Meta row in `save()` and replay at startup.
+- Controllers: class-validator DTOs never declare `id`, timestamps or audit columns (so a client-sent id is a
+  400); creates take `@IdempotencyKey()` and use `runIdempotent` (status 200 when `replayed`, else 201);
+  updates take `@IfMatch()` + `tx.expectVersion` + `tx.update`; emit realtime events with `tx.emit` inside
+  the change. User-facing errors are `ApiError(status, CODE, en, hi, details)`.
 - New sheet or column = change `schema.ts` + `entities.ts` + bump `SCHEMA_VERSION` (migration work).
 - CI (to be added by a person, not in .github/workflows here): `npm ci && npm run build && npm test`.

@@ -47,3 +47,20 @@ export type PriceChangeReason = (typeof PRICE_CHANGE_REASONS)[number];
 /** Why a backups/ snapshot was taken (part of its file name, e.g. snapshot-20261105-143000-auto.xlsx). */
 export const SNAPSHOT_REASONS = ['auto', 'day-close', 'pre-restore'] as const;
 export type SnapshotReason = (typeof SNAPSHOT_REASONS)[number];
+
+/**
+ * Socket.IO events pushed after each committed write (REQ-116). Payloads carry
+ * ids and the new state; a reconnecting device refetches the GET endpoints.
+ * `app.reload` is sent to every socket after a restore.
+ */
+export const REALTIME_EVENTS = [
+  'kot.created',
+  'kot.status_changed',
+  'order.updated',
+  'table.status_changed',
+  'payment.recorded',
+  'menu.availability_changed',
+  'dashboard.updated',
+  'app.reload',
+] as const;
+export type RealtimeEvent = (typeof REALTIME_EVENTS)[number];

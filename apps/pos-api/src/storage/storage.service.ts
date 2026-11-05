@@ -11,7 +11,9 @@ import { BackupService } from './backup.service';
 import { FolderLock } from './folder-lock';
 import { JOURNAL_FILE, Journal, JournalEntry, readJournal } from './journal';
 import { MIGRATIONS, Migration, migrateWorkbook } from './migrations';
+import { SaveScheduler } from './save-scheduler';
 import { SCHEMA_VERSION } from './schema';
+import { SchedulerClock } from './snapshot-scheduler';
 import { Row, WorkbookData, WorkbookValidationError, emptyData, parseWorkbook } from './workbook-codec';
 import { readWorkbookFile, writeWorkbookFile } from './workbook-file';
 import { WorkbookStore } from './workbook-store';
@@ -118,6 +120,46 @@ export class StorageService {
     this.queue = new WriteQueue(host as typeof host & { store: WorkbookStore });
     // Non-enumerable for the same reason as `store` (it points back at this service).
     Object.defineProperty(this, 'backups', { value: new BackupService(this), enumerable: false });
+    this.queue.onCommit(() => this.autoSave?.changed());
+  }
+
+  private autoSave: SaveScheduler | null = null;
+
+  /**
+   * Starts the coalesced save (REQ-107): every commit schedules a save within
+   * 2 s, at most one every 2 s. Started by main.ts after load; stopped by close().
+   */
+  startAutoSave(options: { clock?: SchedulerClock; intervalMs?: number; onError?: (err: Error) => void } = {}): SaveScheduler {
+    this.autoSave?.stop();
+    const target = {
+      save: () => this.save(),
+      get lastSavedSeq() {
+        return self.lastSavedSeq;
+      },
+      get changeSeq() {
+        return self.journal.lastSeq;
+      },
+    };
+    const self = this;
+    this.autoSave = new SaveScheduler(target, options.clock, options.intervalMs, options.onError);
+    if (this.lastSavedSeq < this.journal.lastSeq) this.autoSave.changed();
+    return this.autoSave;
+  }
+
+  get saveScheduler(): SaveScheduler | null {
+    return this.autoSave;
+  }
+
+  /** Admin dashboard alert while the last workbook save or journal write failed (REQ-117). */
+  get saveAlert(): { code: 'SAVE_FAILED'; message_en: string; message_hi: string; details: { reason: string } } | null {
+    const reason = this.lastSaveError ?? this.lastJournalError;
+    if (!reason) return null;
+    return {
+      code: 'SAVE_FAILED',
+      message_en: 'Saving problem, call owner',
+      message_hi: 'सेव में समस्या, मालिक को बुलाएँ',
+      details: { reason },
+    };
   }
 
   get store(): WorkbookStore {
@@ -295,6 +337,8 @@ export class StorageService {
   }
 
   close(): void {
+    this.autoSave?.stop();
+    this.autoSave = null;
     this.backups.stopScheduler();
     this.journal.close();
     this.storeRef = null;

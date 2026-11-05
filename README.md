@@ -21,7 +21,28 @@ owner can open it and back it up. The server:
   the newest valid backup in `backups/` plus the journal changes made after it (see "Recovering a corrupt
   workbook");
 - saves the workbook atomically (temp file + rename) with protected sheets: bold frozen headers, locked ID
-  columns, dropdown validation on status/enum columns, and a sheet password.
+  columns, dropdown validation on status/enum columns, and a sheet password. Saves are coalesced: at most
+  one every 2 seconds, always within 2 seconds of the last change. If a save fails (disk full, file locked
+  by another program), the previous file stays intact, `/api/v1/health` turns red with the alert "Saving
+  problem, call owner", and the save is retried 2 seconds later;
+- if the journal cannot be written, the change is undone in memory and the request answers `503
+  SAVE_FAILED` ("Saving problem, call owner"), so nothing is confirmed that is not on disk;
+- gives every row `created_at`/`updated_at` (ISO 8601, `+05:30`), `created_by`/`updated_by` and a
+  `row_version` that goes up by 1 on each update. Updates need an `If-Match: <row_version>` header (`428`
+  without it); a stale version answers `409` with the current record in `details.current`;
+- generates all ids itself from the Counters sheet (e.g. `ORD-20261105-0008`, token `T-007`); orders, KOTs
+  and tokens get a `business_date` that rolls over at the configured reset time (04:00 by default), so a
+  1 a.m. order belongs to the previous trading day;
+- creating requests carry an `Idempotency-Key` header; repeating a key returns the stored record (`200`)
+  instead of creating a second one;
+- validates request bodies (unknown fields are rejected with `400`), strips leading `=`, `+`, `-` and `@`
+  from text so the workbook cannot run formulas when opened in Excel, and answers every error with
+  `{code, message_en, message_hi, details}`;
+- pushes small Socket.IO events (path `/socket.io`) after each confirmed change: `kot.created`,
+  `kot.status_changed`, `order.updated`, `table.status_changed`, `payment.recorded`,
+  `menu.availability_changed`, `dashboard.updated`. A rejected change sends nothing;
+- serves the web app's static build (when `WEB_DIR` is set) on every path outside `/api` and `/socket.io`;
+  an unknown `/api/...` path answers `404` with code `NOT_FOUND`.
 
 ### Automatic backups
 
@@ -36,11 +57,12 @@ older snapshots are deleted. Other files in `backups/` (such as pre-migration co
 Order lines copy the item name, variant name, food type and unit price at the moment of ordering, so later
 menu edits never change old bills. PINs are stored only as bcrypt hashes.
 
-So far the HTTP API only has the health endpoint, `GET /api/v1/health`.
+So far the HTTP API only has the health endpoint, `GET /api/v1/health` (no login needed), plus the
+Socket.IO channel.
 
 ## Stack
 
-- Node.js 20, TypeScript, NestJS 10
+- Node.js 20, TypeScript, NestJS 10, class-validator, Socket.IO
 - ExcelJS for the workbook, bcryptjs for PIN hashes
 - Jest for tests (80% coverage required on the storage and billing code)
 - npm workspaces: `apps/pos-api` (the server) and `packages/shared` (enums and data types shared with the web app)
@@ -59,6 +81,7 @@ Environment variables (see `.env.example`; all are optional):
 | `DATA_DIR` | `./data` | folder for the workbook, journal, `backups/` and lock file (relative to where the server starts) |
 | `WORKBOOK_SHEET_PASSWORD` | `dhaba-pos` | password protecting the workbook's sheets |
 | `SNAPSHOT_OPEN_HOURS` | empty (all day) | IST open hours for automatic snapshots, `HH:mm-HH:mm`, e.g. `10:00-23:30` or `18:00-02:00` |
+| `WEB_DIR` | empty (none) | folder with the web app's static build (`index.html` at its root), served on non-API paths |
 
 ## Install
 
@@ -103,3 +126,11 @@ This runs all tests with coverage and fails if the storage or billing code drops
 tests include a crash test that kills a writing server process with `kill -9` at random points and checks
 that every confirmed change is present exactly once after restart, and a lunch-rush simulation with
 double-tapped requests and a mid-service price change.
+
+To time a full save of a synthetic 15 MB workbook (a busy month of orders):
+
+```bash
+npm run bench:save -w @dhaba/pos-api
+```
+
+It prints the workbook size and the time of three saves; the target is under 1 second on the counter PC.

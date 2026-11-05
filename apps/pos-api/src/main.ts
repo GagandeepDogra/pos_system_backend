@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { configureApp } from './app.setup';
 import { loadConfig } from './config';
 import { FolderLockedError } from './storage/folder-lock';
 import { JournalCorruptError } from './storage/journal';
@@ -27,7 +28,7 @@ async function bootstrap(): Promise<void> {
   // Listen first so /health can answer 503 while the workbook loads; every
   // other route is refused until loading, migration and journal replay finish.
   const app = await NestFactory.create(AppModule.register(storage));
-  app.setGlobalPrefix('api/v1');
+  configureApp(app, { webDir: config.webDir });
   await app.listen(config.port, config.host);
   console.log(`pos-api listening on http://${config.host}:${config.port}/api/v1 (data: ${config.dataDir})`);
 
@@ -48,6 +49,7 @@ async function bootstrap(): Promise<void> {
     );
     return;
   }
+  storage.startAutoSave({ onError: (err) => console.error(`pos-api: workbook save failed (will retry): ${err.message}`) });
   storage.backups.startScheduler({
     openHours: config.snapshotOpenHours,
     onError: (err) => console.error(`pos-api: automatic snapshot failed: ${err.message}`),

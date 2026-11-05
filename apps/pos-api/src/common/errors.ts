@@ -51,8 +51,8 @@ export class JournalUnavailableError extends ApiError {
     super(
       HttpStatus.SERVICE_UNAVAILABLE,
       'SAVE_FAILED',
-      'Could not save. Nothing was changed; please try again.',
-      'सेव नहीं हुआ। कुछ नहीं बदला; फिर से कोशिश करें।',
+      'Saving problem, call owner. Nothing was changed.',
+      'सेव में समस्या, मालिक को बुलाएँ। कुछ नहीं बदला।',
       { reason },
     );
   }

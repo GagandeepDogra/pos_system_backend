@@ -8,6 +8,8 @@ export interface AppConfig {
   sheetPassword: string;
   /** IST open hours for automatic snapshots, "HH:mm-HH:mm"; null = all day. */
   snapshotOpenHours: OpenHours | null;
+  /** Statically exported PWA build served for non-API paths; null = none. */
+  webDir: string | null;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -17,5 +19,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     dataDir: path.resolve(env.DATA_DIR ?? './data'),
     sheetPassword: env.WORKBOOK_SHEET_PASSWORD ?? 'dhaba-pos',
     snapshotOpenHours: parseOpenHours(env.SNAPSHOT_OPEN_HOURS),
+    webDir: env.WEB_DIR ? path.resolve(env.WEB_DIR) : null,
   };
 }
