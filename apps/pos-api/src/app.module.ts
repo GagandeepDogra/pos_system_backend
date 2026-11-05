@@ -2,6 +2,7 @@ import { DynamicModule, Module, Type } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { StartupGuard } from './common/startup.guard';
 import { HealthController } from './health/health.controller';
+import { BackupService } from './storage/backup.service';
 import { StorageService } from './storage/storage.service';
 import { WriteQueue } from './storage/write-queue';
 
@@ -18,9 +19,10 @@ export class AppModule {
       providers: [
         { provide: StorageService, useValue: storage },
         { provide: WriteQueue, useValue: storage.queue },
+        { provide: BackupService, useValue: storage.backups },
         { provide: APP_GUARD, useClass: StartupGuard },
       ],
-      exports: [StorageService, WriteQueue],
+      exports: [StorageService, WriteQueue, BackupService],
     };
   }
 }

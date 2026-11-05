@@ -43,3 +43,7 @@ export type CloseReasonCode = (typeof CLOSE_REASON_CODES)[number];
 
 export const PRICE_CHANGE_REASONS = ['MARKET_RATE', 'NEW_SEASON', 'CORRECTION', 'OTHER'] as const;
 export type PriceChangeReason = (typeof PRICE_CHANGE_REASONS)[number];
+
+/** Why a backups/ snapshot was taken (part of its file name, e.g. snapshot-20261105-143000-auto.xlsx). */
+export const SNAPSHOT_REASONS = ['auto', 'day-close', 'pre-restore'] as const;
+export type SnapshotReason = (typeof SNAPSHOT_REASONS)[number];

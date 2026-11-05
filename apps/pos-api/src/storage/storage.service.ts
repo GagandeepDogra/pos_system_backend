@@ -7,6 +7,7 @@ import path from 'path';
 import ExcelJS from 'exceljs';
 import { WritesBlockedError } from '../common/errors';
 import { nowIst } from '../common/time';
+import { BackupService } from './backup.service';
 import { FolderLock } from './folder-lock';
 import { JOURNAL_FILE, Journal, JournalEntry, readJournal } from './journal';
 import { MIGRATIONS, Migration, migrateWorkbook } from './migrations';
@@ -93,6 +94,10 @@ export class StorageService {
   lastJournalError: string | null = null;
   lastSaveError: string | null = null;
   lastSavedAt: string | null = null;
+  /** Journal sequence included in the live file on disk (-1 until known). */
+  lastSavedSeq = -1;
+  /** Snapshots into backups/ (REQ-109). */
+  declare readonly backups: BackupService;
   /** Journal entries replayed at the last load. */
   replayed = 0;
   migratedFrom: number | null = null;
@@ -111,6 +116,8 @@ export class StorageService {
     // Non-enumerable, so serialising the service (Nest does for module tokens) never touches it.
     Object.defineProperty(host, 'store', { get: () => this.store, enumerable: false });
     this.queue = new WriteQueue(host as typeof host & { store: WorkbookStore });
+    // Non-enumerable for the same reason as `store` (it points back at this service).
+    Object.defineProperty(this, 'backups', { value: new BackupService(this), enumerable: false });
   }
 
   get store(): WorkbookStore {
@@ -176,6 +183,7 @@ export class StorageService {
       }
       const store = new WorkbookStore(data);
       const baseSeq = store.get('meta', 'META')!.last_journal_seq;
+      this.lastSavedSeq = baseSeq;
       const entries = this.journal.open(baseSeq);
       this.replayed = replayJournal(store, entries, baseSeq);
       this.storeRef = store;
@@ -279,6 +287,7 @@ export class StorageService {
       await writeWorkbookFile(this.workbookPath, store.toData(), this.options.sheetPassword);
       this.lastSaveError = null;
       this.lastSavedAt = now;
+      this.lastSavedSeq = seq;
     } catch (err) {
       this.lastSaveError = (err as Error).message;
       throw err;
@@ -286,6 +295,7 @@ export class StorageService {
   }
 
   close(): void {
+    this.backups.stopScheduler();
     this.journal.close();
     this.storeRef = null;
     if (this.stateRef === 'ready') this.stateRef = 'loading';

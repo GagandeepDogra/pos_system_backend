@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { StartingError } from '../common/errors';
+import { nowIst } from '../common/time';
 import { RecoveryOffer, StorageService } from '../storage/storage.service';
 
 export interface HealthBody {
@@ -7,6 +8,7 @@ export interface HealthBody {
   workbook: { loaded: boolean; last_saved_at?: string | null; last_save_error?: string | null };
   journal?: { last_seq: number; last_error: string | null; replayed_at_startup: number };
   queue?: { depth: number };
+  backups?: { last_snapshot: string | null; last_snapshot_at: string | null; last_snapshot_error: string | null };
   recovery?: RecoveryOffer;
 }
 
@@ -22,12 +24,19 @@ export class HealthController {
     if (s.state === 'corrupt') {
       return { status: 'red', workbook: { loaded: false }, recovery: s.recoveryOffer ?? undefined };
     }
+    const b = s.backups;
+    // A failed snapshot is reported but does not turn health red: the live file and journal are fine.
     const red = Boolean(s.lastJournalError || s.lastSaveError);
     return {
       status: red ? 'red' : 'green',
       workbook: { loaded: true, last_saved_at: s.lastSavedAt, last_save_error: s.lastSaveError },
       journal: { last_seq: s.journal.lastSeq, last_error: s.lastJournalError, replayed_at_startup: s.replayed },
       queue: { depth: s.queue.depth },
+      backups: {
+        last_snapshot: b.lastSnapshot?.name ?? null,
+        last_snapshot_at: b.lastSnapshot ? nowIst(b.lastSnapshot.at) : null,
+        last_snapshot_error: b.lastSnapshotError,
+      },
     };
   }
 }

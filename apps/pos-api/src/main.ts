@@ -48,6 +48,10 @@ async function bootstrap(): Promise<void> {
     );
     return;
   }
+  storage.backups.startScheduler({
+    openHours: config.snapshotOpenHours,
+    onError: (err) => console.error(`pos-api: automatic snapshot failed: ${err.message}`),
+  });
   console.log(`pos-api ready (journal seq ${storage.journal.lastSeq}, replayed ${storage.replayed})`);
 }
 

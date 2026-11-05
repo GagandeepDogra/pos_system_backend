@@ -33,6 +33,20 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     row is rolled back (journal failure → 503 SAVE_FAILED, health red). `runIdempotent(sheet, uniqueColumn,
     key, tx => row)` → `{replayed, row}`: a known key returns the stored row without enqueuing (→ HTTP 200).
     `onCommit(listener)` for realtime events / coalesced save scheduling (WI-004).
+  - `storage/backup-folder.ts` — backups/ snapshots: `snapshot-YYYYMMDD-HHmmss-<reason>[-n].xlsx` (IST;
+    reason = shared `SNAPSHOT_REASONS`: auto | day-close | pre-restore), `retentionPlan(snapshots, now)` (pure:
+    keep all ≤30 days, then one per IST day — day-close preferred, else newest — up to 365 days, drop older),
+    `BackupFolder` (`list`, `copyIn` temp+fsync+rename, `prune`). Non-`snapshot-*` files are never touched.
+  - `storage/backup.service.ts` — `BackupService` = `storage.backups` (also a Nest provider): `snapshot(reason, at)`
+    saves first if `storage.lastSavedSeq` lags the journal, copies the live file, verifies the copy with
+    `readWorkbookFile` (deletes it on failure), prunes, then `journal.compact(seq of the previous verified
+    snapshot)` (one snapshot of slack). `dayCloseSnapshot()` — WI-016 day close calls this (always snapshots,
+    resets the 15-min timer). Use `snapshot('pre-restore')` before a restore swap (WI-017). `lastSnapshot`,
+    `lastSnapshotError` feed /health `backups` (a snapshot error does not turn health red).
+  - `storage/snapshot-scheduler.ts` — `SnapshotScheduler`: checks 15 min after the last snapshot/check, snapshots
+    only if `changeSeq` (journal lastSeq) moved and within open hours (`SNAPSHOT_OPEN_HOURS`, IST, null = all
+    day). Injectable `SchedulerClock`; tests use `test/support/fake-clock.ts` (`advance(ms, () => sched.whenIdle())`).
+    Started by `main.ts` via `storage.backups.startScheduler()` after load; `storage.close()` stops it.
   - `storage/migrations.ts` — `MIGRATIONS[n]` upgrades an ExcelJS workbook v n → n+1 (none yet).
   - `storage/storage.service.ts` — `StorageService`: `lockFolder()` then `load()` (or `open()` = both).
     Load: read → migrate a copy (original copied to `backups/pre-migration-v<n>-*.xlsx`) → parse → replay
@@ -63,7 +77,8 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
 - `npm install`
 - `npm test` — jest with coverage; thresholds of 80% on `src/storage/` and `src/billing/` (jest.config.js).
 - `npm run build` — builds shared, then pos-api (`tsc -p tsconfig.build.json`).
-- `npm start` — `node apps/pos-api/dist/main.js`; env: PORT, HOST, DATA_DIR, WORKBOOK_SHEET_PASSWORD.
+- `npm start` — `node apps/pos-api/dist/main.js`; env: PORT, HOST, DATA_DIR, WORKBOOK_SHEET_PASSWORD,
+  SNAPSHOT_OPEN_HOURS (optional `HH:mm-HH:mm`; an invalid value fails startup).
 - `npm run recover` — with the server stopped, restore a corrupt live workbook from the newest valid backup
   plus journal replay.
 
