@@ -54,6 +54,22 @@ owner can open it and back it up. The server:
   Admin's PIN returns a single-use approval token, valid for 2 minutes, that the action sends as
   `X-Approval-Token`; the Admin is recorded as approver. Each user sets their own language (`en`/`hi`)
   with `PATCH /api/v1/me/language`;
+- runs the table grid and dine-in sessions (all need a login):
+  - `GET /api/v1/tables` lists active tables in number order, each with a status worked out from its
+    open order (never stored): `AVAILABLE` (no open order), `OCCUPIED` (order open) or `READY_TO_CLOSE`
+    (bill printed, awaiting payment), plus the order id, minutes open and the running bill. Kitchen
+    users get no amounts. `?area=Hall` shows one area (tables without an area appear only in the full
+    list); `?status=OCCUPIED` filters by status;
+  - `POST /api/v1/orders/dine-in` with `{"table_id", "guest_count"?}` and an `Idempotency-Key` header
+    opens a session (`201`). Repeating the same key returns the same order (`200`); a table that already
+    has an open order answers `409 TABLE_BUSY` with that order in `details.order`. Admin and Cashier only;
+  - `GET /api/v1/orders/{id}` returns the order with its payments and its lines grouped under the KOT
+    that sent them. A Cashier can open every open session but only their own closed orders;
+  - `POST /api/v1/orders/{id}/move` with `{"table_id"}` moves a session to a free table, and
+    `POST /api/v1/orders/{id}/merge` with `{"source_order_id"}` moves another open table's lines onto
+    this order (the other order is closed and points to this one; its table becomes free; a source with
+    payments is refused). Both need the order's `row_version` in `If-Match` and are recorded in the
+    Audit Log sheet;
 - serves the web app's static build (when `WEB_DIR` is set) on every path outside `/api` and `/socket.io`;
   an unknown `/api/...` path answers `404` with code `NOT_FOUND`.
 
@@ -70,8 +86,8 @@ older snapshots are deleted. Other files in `backups/` (such as pre-migration co
 Order lines copy the item name, variant name, food type and unit price at the moment of ordering, so later
 menu edits never change old bills. PINs are stored only as bcrypt hashes.
 
-So far the HTTP API only has the health endpoint, `GET /api/v1/health` (no login needed), plus the
-Socket.IO channel.
+So far the HTTP API has the health endpoint, `GET /api/v1/health` (no login needed), sign-in and
+approvals, the table grid and dine-in session routes above, plus the Socket.IO channel.
 
 ## Stack
 

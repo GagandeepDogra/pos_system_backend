@@ -16,6 +16,13 @@ export type OrderType = (typeof ORDER_TYPES)[number];
 export const ORDER_STATUSES = ['OPEN', 'BILLED', 'PAID', 'CLOSED_EXCEPTION', 'CANCELLED'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
+/**
+ * Table status, derived from the table's OPEN/BILLED order and never stored (REQ-033):
+ * no such order = AVAILABLE (green), OPEN = OCCUPIED (red), BILLED = READY_TO_CLOSE (orange).
+ */
+export const TABLE_STATUSES = ['AVAILABLE', 'OCCUPIED', 'READY_TO_CLOSE'] as const;
+export type TableStatus = (typeof TABLE_STATUSES)[number];
+
 export const KOT_STATUSES = ['NEW', 'PREPARING', 'READY', 'SERVED', 'CANCELLED'] as const;
 export type KotStatus = (typeof KOT_STATUSES)[number];
 

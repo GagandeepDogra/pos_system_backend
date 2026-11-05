@@ -114,7 +114,25 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     error, unsaved_changes), alert, journal, queue, backups; 503 while loading.
   - `app.module.ts` — `AppModule.register(storage, extraControllers?, extraProviders?, auth?)` (`auth` = AuthOptions or an
     AuthService instance); provides StorageService, WriteQueue, BackupService, AuthService, RealtimeGateway,
-    StartupGuard + AuthGuard (APP_GUARD), AuthController, MeController.
+    StartupGuard + AuthGuard (APP_GUARD), AuthController, MeController and **`FEATURE_CONTROLLERS`** — add each new
+    feature controller to that list (main.ts and every test app get it) and its operationIds to `implemented` in
+    `test/auth.e2e.spec.ts`.
+  - `billing/totals.ts` — `computeTotals(order, lines, payments, settings)` → subtotal (ACTIVE lines), discount (clamped),
+    tax (GST % on subtotal−discount, 0 when null), round_off (half-up to the rupee), grand_total, paid (SUCCESS), balance.
+    Use it whenever lines/payments/discount change (WI-008/009/010 may extend it, keep one function).
+  - `tables/table-status.ts` — derived status (shared `TABLE_STATUSES`: AVAILABLE | OCCUPIED (OPEN) | READY_TO_CLOSE
+    (BILLED)); `activeOrderForTable(storeOrTx, tableId)` = the one OPEN/BILLED order (use it for TABLE_BUSY / deactivate
+    checks); `tableCard` (Kitchen: no `running_total`/`balance_due`). `tables.controller.ts` = `GET /tables?area&status`
+    (minutes_open uses `auth.now()`).
+  - `orders/dine-in.ts` — queue changes `openSession`, `moveSession`, `mergeSessions` (+ MOVE/MERGE/CREATE audit, events),
+    `blankOrder()`, `isOpenOrder`, `TableBusyError` (409 TABLE_BUSY, `details.order`), and `orderView(store, order)` =
+    order + `kots[]` (each with `lines`, oldest first) + `payments` — the getOrder body; reuse it for bill/receipt.
+    Merge: source lines get `order_id` = survivor (KOTs keep their order_id; orderView finds them via `kot_id`), source
+    becomes CANCELLED + `merged_into_order_id` + zero totals, a BILLED survivor reopens to OPEN with a BILL_REOPEN
+    exception (reason_code MERGE), a source with SUCCESS payments → 409 SOURCE_HAS_PAYMENTS.
+    `orders.controller.ts` — `POST /orders/dine-in`, `GET /orders/:id` (Cashier: 403 ORDER_NOT_VISIBLE for another
+    user's closed order, RSK-002), `POST /orders/:id/move`, `POST /orders/:id/merge`. WI-011's takeaway route can go in
+    this controller (it is `@Controller('orders')`).
   - `deploy/profile.ts` — `loadDeployProfile(env)` (part of `loadConfig().deploy`): `DEPLOY_PROFILE` lan|cloud.
     LAN binds only to a private/loopback `HOST` (default `pickLanAddress()`; `0.0.0.0`/public refused), TLS optional
     (mkcert), no CORS. Cloud requires TLS files, an `https://` `CORS_ORIGIN`, `OFFSITE_BACKUP_DIR`; login limit 10/min.
@@ -138,6 +156,9 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
   `support/ts-register.js` and kill -9s it), `lunch-rush.spec.ts`, `core.e2e.spec.ts` with
   `support/demo.controller.ts` (test-only routes showing the controller pattern: DTO + `@IdempotencyKey` +
   `runIdempotent` + `tx.create` + `tx.emit`; socket.io-client checks events), `support/save-bench.ts`.
+
+- `apps/pos-api/test/tables.e2e.spec.ts` — the pattern for a feature e2e (seeded users, real logins, a `sendKot` helper
+  writing KOTs/lines through the queue — switch it to the real send route once WI-008 exists).
 
 ## Commands (from repo root)
 - `npm install`

@@ -5,10 +5,15 @@ import { AuthGuard } from './auth/auth.guard';
 import { AuthOptions, AuthService } from './auth/auth.service';
 import { StartupGuard } from './common/startup.guard';
 import { HealthController } from './health/health.controller';
+import { OrdersController } from './orders/orders.controller';
 import { RealtimeGateway } from './realtime/realtime.gateway';
 import { BackupService } from './storage/backup.service';
 import { StorageService } from './storage/storage.service';
 import { WriteQueue } from './storage/write-queue';
+import { TablesController } from './tables/tables.controller';
+
+/** Feature controllers of the API contract; every app (main.ts and tests) gets them. */
+export const FEATURE_CONTROLLERS: Type[] = [TablesController, OrdersController];
 
 @Module({})
 export class AppModule {
@@ -28,7 +33,7 @@ export class AppModule {
     const authService = auth instanceof AuthService ? auth : new AuthService(storage, auth);
     return {
       module: AppModule,
-      controllers: [HealthController, AuthController, MeController, ...extraControllers],
+      controllers: [HealthController, AuthController, MeController, ...FEATURE_CONTROLLERS, ...extraControllers],
       providers: [
         { provide: StorageService, useValue: storage },
         { provide: WriteQueue, useValue: storage.queue },
