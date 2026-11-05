@@ -8,6 +8,7 @@ import { restrictDataFolder } from './deploy/data-folder';
 import { applyProfile, createHttpsRedirectServer } from './deploy/hardening';
 import { OffsiteCopyScheduler } from './deploy/offsite-copy';
 import { DeployConfigError, readTlsOptions } from './deploy/profile';
+import { AvailabilityRollover } from './menu/availability';
 import { FolderLockedError } from './storage/folder-lock';
 import { JournalCorruptError } from './storage/journal';
 import { StorageService } from './storage/storage.service';
@@ -81,6 +82,10 @@ async function bootstrap(): Promise<void> {
     return;
   }
   storage.startAutoSave({ onError: (err) => console.error(`pos-api: workbook save failed (will retry): ${err.message}`) });
+  // available_today resets to TRUE at business-day rollover (REQ-074).
+  const rollover = new AvailabilityRollover(storage);
+  rollover.start();
+  process.on('exit', () => rollover.stop());
   storage.backups.startScheduler({
     openHours: config.snapshotOpenHours,
     onError: (err) => console.error(`pos-api: automatic snapshot failed: ${err.message}`),

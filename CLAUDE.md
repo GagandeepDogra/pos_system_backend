@@ -133,6 +133,16 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     `orders.controller.ts` — `POST /orders/dine-in`, `GET /orders/:id` (Cashier: 403 ORDER_NOT_VISIBLE for another
     user's closed order, RSK-002), `POST /orders/:id/move`, `POST /orders/:id/merge`. WI-011's takeaway route can go in
     this controller (it is `@Controller('orders')`).
+  - `menu/availability.ts` — today's availability (REQ-074/056): `isAvailableToday(item, today, resetTime)` (a FALSE set on
+    an earlier business day already counts as TRUE — **WI-008's ITEM_UNAVAILABLE check must use it**, with
+    `todayOf(store, at)` / `resetTimeOf(store)`), `setAvailability(tx, id, ifMatch|null, available, userId, source)`
+    (audit AVAILABLE/OUT_OF_STOCK, emits `menu.availability_changed`; KITCHEN source adds `alert{message_en,message_hi}`;
+    no-op when unchanged), `resetAvailability(tx, {all?, userId?, today?})` — **WI-016 day close calls it with
+    `{all: true}`**; `AvailabilityRollover` (main.ts, every minute) journals the reset of stale FALSE flags.
+  - `menu/menu.ts` + `menu.controller.ts` — `GET /menu?q` (array of `MenuItem`: item + category names/sort + active
+    variants + `starting_price` + `orderable`; Kitchen: no `price`/`starting_price`; q < 2 chars → 400 SEARCH_TOO_SHORT),
+    `PATCH /items/:id/availability` (If-Match, `{available_today}`), `POST /kitchen/items/:id/out-of-stock`. WI-013's
+    category/item edits should emit `menu.availability_changed` too so menus refetch.
   - `deploy/profile.ts` — `loadDeployProfile(env)` (part of `loadConfig().deploy`): `DEPLOY_PROFILE` lan|cloud.
     LAN binds only to a private/loopback `HOST` (default `pickLanAddress()`; `0.0.0.0`/public refused), TLS optional
     (mkcert), no CORS. Cloud requires TLS files, an `https://` `CORS_ORIGIN`, `OFFSITE_BACKUP_DIR`; login limit 10/min.

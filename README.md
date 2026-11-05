@@ -70,6 +70,20 @@ owner can open it and back it up. The server:
     this order (the other order is closed and points to this one; its table becomes free; a source with
     payments is refused). Both need the order's `row_version` in `If-Match` and are recorded in the
     Audit Log sheet;
+- serves the food-selection menu and today's item availability (all need a login):
+  - `GET /api/v1/menu` lists the active items of active categories (category order, then name), each with
+    its category names, veg/non-veg type, optional photo, active variants with prices, the starting price
+    (cheapest active variant) and `orderable` (available today and has an active variant). Kitchen users
+    get no prices. `?q=dal` searches English names, Hindi names and short codes; fewer than 2 letters
+    answers `400 SEARCH_TOO_SHORT`;
+  - `PATCH /api/v1/items/{id}/availability` with `{"available_today": true|false}` and the item's
+    `row_version` in `If-Match` switches an item on or off for today (any role; it never changes whether
+    the item is active on the menu);
+  - `POST /api/v1/kitchen/items/{id}/out-of-stock` marks an item out of stock for today (Kitchen and
+    Admin only; a Cashier gets `403`). Connected phones receive a `menu.availability_changed` event with a
+    Hindi/English alert for the cashier;
+  - every item switched off is available again at the start of the next business day (the day rolls
+    over at the settings' token reset time, 04:00 by default);
 - serves the web app's static build (when `WEB_DIR` is set) on every path outside `/api` and `/socket.io`;
   an unknown `/api/...` path answers `404` with code `NOT_FOUND`.
 
@@ -87,7 +101,7 @@ Order lines copy the item name, variant name, food type and unit price at the mo
 menu edits never change old bills. PINs are stored only as bcrypt hashes.
 
 So far the HTTP API has the health endpoint, `GET /api/v1/health` (no login needed), sign-in and
-approvals, the table grid and dine-in session routes above, plus the Socket.IO channel.
+approvals, the table grid and dine-in session routes, the menu and availability routes above, plus the Socket.IO channel.
 
 ## Stack
 
