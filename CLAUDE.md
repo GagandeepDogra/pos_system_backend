@@ -143,6 +143,17 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     variants + `starting_price` + `orderable`; Kitchen: no `price`/`starting_price`; q < 2 chars → 400 SEARCH_TOO_SHORT),
     `PATCH /items/:id/availability` (If-Match, `{available_today}`), `POST /kitchen/items/:id/out-of-stock`. WI-013's
     category/item edits should emit `menu.availability_changed` too so menus refetch.
+  - `menu/admin-menu.ts` + `admin-menu.controller.ts` (WI-013) — queue changes `createCategory`/`updateCategory`,
+    `createItem`/`updateItem`, `createVariant`/`updateVariant`, `changeVariantPrice` (all emit `menu.availability_changed`
+    with `source:'ADMIN'`; audit CREATE/UPDATE/DEACTIVATE/REACTIVATE/PRICE_CHANGE). Uniqueness checked in the queue,
+    case-insensitive, over active and inactive rows: 409 DUPLICATE_NAME (category name_en; item name per category;
+    variant name per item), DUPLICATE_SHORT_CODE; 400 SHORT_CODE_LENGTH (2–5), PRICE_NOT_POSITIVE; 422 PRICE_UNCHANGED.
+    Ids `CAT-`/`ITM-`/`VAR-`/`PRC-NNNNNN` (counters CATEGORY/ITEM/VARIANT/PRICE_CHANGE; `nextId` skips ids already in
+    the sheet). Variant PATCH drops `price` (`@ServerDerived`); price only changes via `changeVariantPrice` (variant +
+    PriceChange + audit in one journal entry; OrderItems untouched). These sheets have no idempotency column, so the
+    controller's `once()` keeps creating keys in memory 24 h per user (checked inside the queue change) — **WI-014
+    can copy it for tables/users**. Tests: `test/admin-menu.e2e.spec.ts`. The auth matrix "Admin gets no 403 on /admin"
+    now asserts not 401/403 (real routes answer 400/428 to empty bodies).
   - `kitchen/kots.ts` + `kots.controller.ts` (WI-008) — `POST /orders/:id/kots` (body `{lines:[{variant_id, quantity 1–99,
     note ≤80}]}`, `runIdempotent('kots','idempotency_key')`, 400 EMPTY_CART, 422 ITEM_UNAVAILABLE `details.lines` =
     rejected lines only, BILLED → OPEN + BILL_REOPEN exception (reason_code NEW_ITEMS); response = Kot + `lines`),

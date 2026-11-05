@@ -84,6 +84,22 @@ owner can open it and back it up. The server:
     Hindi/English alert for the cashier;
   - every item switched off is available again at the start of the next business day (the day rolls
     over at the settings' token reset time, 04:00 by default);
+- lets the Admin manage the menu (Admin only; nothing is ever deleted, rows are deactivated instead).
+  Creating calls take an `Idempotency-Key` header (a repeat answers `200` with the created row); edits
+  take the row's `row_version` in `If-Match` (`409` with the current row when stale):
+  - `POST /api/v1/admin/categories` and `PATCH /api/v1/admin/categories/{id}` add, rename, reorder,
+    deactivate or reactivate a category (`409 DUPLICATE_NAME` for an English name already used).
+    A deactivated category's items leave the menu and come back when it is reactivated;
+  - `POST /api/v1/admin/items` and `PATCH /api/v1/admin/items/{id}` add, edit or deactivate an item with
+    its Hindi name, veg/non-veg, photo URL, kitchen station and a 2–5 character short code (`400
+    SHORT_CODE_LENGTH`; `409` for a name already used in the category or a short code already used);
+  - `POST /api/v1/admin/items/{id}/variants` adds a variant with its price (`400 PRICE_NOT_POSITIVE` for
+    ₹0 or less; `409` for a name already used on the item); `PATCH /api/v1/admin/variants/{id}` renames,
+    reorders or deactivates it and ignores any price sent;
+  - `POST /api/v1/admin/variants/{id}/price-changes` (`Idempotency-Key` and `If-Match`) with
+    `{"new_price": "220.00", "reason": "MARKET_RATE"}` (reason one of `MARKET_RATE`, `NEW_SEASON`,
+    `CORRECTION`, `OTHER`) changes the price and writes the price history row (old, new, who, when,
+    reason) and an audit row together. Lines already sent keep the price they were sent at;
 - sends orders to the kitchen and runs the kitchen board (all need a login):
   - `POST /api/v1/orders/{id}/kots` (Admin, Cashier; `Idempotency-Key` header) with
     `{"lines":[{"variant_id":"VAR-1","quantity":2,"note":"No onion"}]}` makes one kitchen order ticket (KOT)

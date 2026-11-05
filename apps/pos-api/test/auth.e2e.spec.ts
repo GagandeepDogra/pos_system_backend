@@ -90,7 +90,7 @@ describe('authentication, role guards and approvals (WI-005)', () => {
     await storage.open();
     auth = new AuthService(storage, { jwtSecret: SECRET, now: () => clock });
     const moduleRef = await Test.createTestingModule({
-      imports: [AppModule.register(storage, [ApprovalProbeController, AdminDefaultController, stubController(new Set(['getDashboard', 'createApproval','updateMyLanguage', 'listTables', 'openTableSession', 'getOrder', 'moveOrder', 'mergeOrders', 'getMenu', 'setItemAvailability', 'markItemOutOfStock', 'sendToKitchen', 'listKitchenKots', 'updateKotStatus', 'cancelOrderItem', 'printBill', 'applyDiscount', 'listOpenBills', 'recordPayment', 'voidPayment', 'closeWithException', 'recordReceiptPrint', 'createTakeaway', 'listActiveTakeaways', 'handOverTakeaway']))], [], auth)],
+      imports: [AppModule.register(storage, [ApprovalProbeController, AdminDefaultController, stubController(new Set(['getDashboard', 'createApproval','updateMyLanguage', 'listTables', 'openTableSession', 'getOrder', 'moveOrder', 'mergeOrders', 'getMenu', 'setItemAvailability', 'markItemOutOfStock', 'sendToKitchen', 'listKitchenKots', 'updateKotStatus', 'cancelOrderItem', 'printBill', 'applyDiscount', 'listOpenBills', 'recordPayment', 'voidPayment', 'closeWithException', 'recordReceiptPrint', 'createTakeaway', 'listActiveTakeaways', 'handOverTakeaway', 'createCategory', 'updateCategory', 'createItem', 'updateItem', 'createVariant', 'updateVariant', 'changeVariantPrice']))], [], auth)],
     }).compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
@@ -271,7 +271,7 @@ describe('authentication, role guards and approvals (WI-005)', () => {
       expect(admin.length).toBeGreaterThanOrEqual(20);
       for (const route of admin) {
         const res = await http()[route.method.toLowerCase() as 'get'](`/api/v1/${route.path.replace(':id', 'X-1')}`).set(bearer(tokens.ADMIN));
-        expect([route.op, res.status]).toEqual([route.op, 200]);
+        expect([route.op, [401, 403].includes(res.status)]).toEqual([route.op, false]);
       }
       await http().get('/api/v1/admin/probe').set(bearer(tokens.ADMIN)).expect(200);
       await http().get('/api/v1/admin/probe').set(bearer(tokens.CASHIER)).expect(403);
