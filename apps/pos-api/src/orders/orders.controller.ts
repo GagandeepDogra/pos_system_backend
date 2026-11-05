@@ -1,5 +1,6 @@
-// Dine-in sessions and the order view: openTableSession, getOrder, moveOrder,
-// mergeOrders (REQ-034, REQ-035, REQ-037, REQ-020).
+// Dine-in sessions, takeaway creation and the order view: openTableSession,
+// createTakeaway, getOrder, moveOrder, mergeOrders (REQ-034, REQ-035, REQ-037,
+// REQ-038, REQ-039, REQ-020).
 import { Body, Controller, Get, HttpCode, Param, Post, Res } from '@nestjs/common';
 import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import type { Response } from 'express';
@@ -9,6 +10,7 @@ import { ApiError, NotFoundError } from '../common/errors';
 import { IdempotencyKey, IfMatch } from '../common/headers';
 import { StorageService } from '../storage/storage.service';
 import { OrderView, isOpenOrder, mergeSessions, moveSession, openSession, orderView } from './dine-in';
+import { createTakeaway } from './takeaway';
 
 export class OpenTableSessionDto {
   @IsString() @MaxLength(20) table_id!: string;
@@ -16,6 +18,13 @@ export class OpenTableSessionDto {
   @IsOptional() @IsInt() @Min(1) @Max(99) guest_count?: number | null;
   @IsOptional() @IsString() @MaxLength(40) customer_name?: string | null;
   @IsOptional() @IsString() @Matches(/^\d{4,10}$/) customer_phone?: string | null;
+}
+
+export class CreateTakeawayDto {
+  /** Optional, never required (REQ-039); blank = none. */
+  @IsOptional() @IsString() @MaxLength(40) customer_name?: string | null;
+  /** Optional; the last 4 digits are enough (4–10 digits, blank = none). */
+  @IsOptional() @IsString() @Matches(/^(\d{4,10})?$/) customer_phone?: string | null;
 }
 
 export class MoveOrderDto {
@@ -41,6 +50,19 @@ export class OrdersController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const { replayed, row } = await this.storage.queue.runIdempotent('orders', 'client_request_id', key, (tx) => openSession(tx, dto, key, user));
+    res.status(replayed ? 200 : 201);
+    return row;
+  }
+
+  @Post('takeaway')
+  @Roles(...PERMISSIONS.createTakeaway)
+  async createTakeaway(
+    @IdempotencyKey() key: string,
+    @Body() dto: CreateTakeawayDto,
+    @CurrentUser() user: SessionUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { replayed, row } = await this.storage.queue.runIdempotent('orders', 'client_request_id', key, (tx) => createTakeaway(tx, dto, key, user));
     res.status(replayed ? 200 : 201);
     return row;
   }

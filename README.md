@@ -122,7 +122,8 @@ owner can open it and back it up. The server:
     (`201`; the same key again returns the original payment with `200`). A cash payment answers with
     `change_due`; the UPI reference is optional. An amount above the balance due is refused with `422`
     `OVERPAYMENT`. Several parts (split payment) are allowed until the balance is zero; then the order
-    becomes `PAID`, its table turns Available and its kitchen tickets leave the board 10 minutes later;
+    becomes `PAID`, its table turns Available and its kitchen tickets leave the board 10 minutes later
+    (a paid takeaway's tickets stay on the board until it is handed over);
   - `POST /api/v1/payments/{id}/void` with `If-Match` and `{"void_reason"}` marks a payment `VOIDED`
     (the row is kept) and adds its amount back to the balance; a paid order reopens. Admin only, or a
     Cashier with an Admin approval in `X-Approval-Token`;
@@ -133,6 +134,19 @@ owner can open it and back it up. The server:
   - `POST /api/v1/orders/{id}/receipt-prints` with an `Idempotency-Key` header logs a receipt print
     (the first is `RECEIPT_PRINT`, later ones `REPRINT` in the audit log) and returns the order with its
     lines and payments plus the dhaba `settings` for the receipt page. Printing never changes a payment;
+- runs takeaways (Admin and Cashier):
+  - `POST /api/v1/orders/takeaway` with an `Idempotency-Key` header and an optional
+    `{"customer_name"?, "customer_phone"?}` (a phone of 4–10 digits; the last 4 are enough) creates a
+    takeaway order with the next token of the business day: `T-001`, `T-002`, … restarting after the
+    settings' token reset time (04:00 by default). `201`; the same key again returns the order with `200`;
+    a token already used that day is refused with `409` `TOKEN_EXISTS`. Food is then sent and paid with
+    the order routes above, before or after cooking;
+  - `GET /api/v1/takeaways` lists the takeaways not yet handed over (and not cancelled or written off),
+    oldest first, each with `token`, `item_count`, `kitchen_status` (`NONE` before anything is sent, else
+    the least advanced ticket: `NEW|PREPARING|READY|SERVED`), `paid` and `ready_to_hand_over`;
+  - `POST /api/v1/takeaways/{id}/handover` with `If-Match` marks a takeaway handed over (`200`); it must
+    be Ready and `PAID`, otherwise `422` `NOT_READY_FOR_HANDOVER` with `details.reasons`
+    (`NOT_READY`, `NOT_PAID`). Its Ready tickets become Served and leave the kitchen board 10 minutes later;
 - serves the web app's static build (when `WEB_DIR` is set) on every path outside `/api` and `/socket.io`;
   an unknown `/api/...` path answers `404` with code `NOT_FOUND`.
 

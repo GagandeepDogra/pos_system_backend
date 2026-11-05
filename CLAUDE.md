@@ -175,7 +175,16 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     (response adds `change_due`), `POST /payments/:id/void` (`void_reason`|`reason`), `POST /orders/:id/close-exception`,
     `POST /orders/:id/receipt-prints` (Idempotency-Key kept in memory 24 h per user, checked inside the queue change;
     returns orderView + `settings` + `print`). `emitOrderChange` is exported from `billing/bill.ts`.
-    WI-011 handover should require `status === 'PAID'`; WI-016 day close lists OPEN/BILLED via `openBills`-like filters.
+    WI-016 day close lists OPEN/BILLED via `openBills`-like filters. **A PAID takeaway's KOTs are not hidden on
+    payment** (`closeSession` skips `hideOrderKots`; REQ-041 paid-before-cooking) — handover hides them.
+  - `orders/takeaway.ts` (WI-011) — `createTakeaway(tx, input, key, user)` (token from counter `TOKEN:<tx.businessDate()>`,
+    409 TOKEN_EXISTS if that token is already on an order of the date; blank name/phone → null; CREATE audit; call via
+    `runIdempotent('orders','client_request_id')`), `kitchenStatus(kots)` (NONE | least advanced non-cancelled KOT),
+    `takeawayCard` / `activeTakeaways(store)` (TAKEAWAY, `handed_over_at` null, OPEN/BILLED/PAID; + `item_count`,
+    `kitchen_status`, `paid` = status PAID, `ready_to_hand_over`), `handOver(tx, id, ifMatch, user)` (422 NOT_A_TAKEAWAY /
+    ALREADY_HANDED_OVER / NOT_READY_FOR_HANDOVER `details.reasons` NOT_READY|NOT_PAID; READY KOTs → SERVED, all KOTs get
+    hide_after; HANDOVER audit). Routes: `POST /orders/takeaway` in `orders.controller.ts`; `GET /takeaways` and
+    `POST /takeaways/:id/handover` in `orders/takeaways.controller.ts`. Tests: `test/takeaway.spec.ts`, `test/takeaways.e2e.spec.ts`.
   - `deploy/profile.ts` — `loadDeployProfile(env)` (part of `loadConfig().deploy`): `DEPLOY_PROFILE` lan|cloud.
     LAN binds only to a private/loopback `HOST` (default `pickLanAddress()`; `0.0.0.0`/public refused), TLS optional
     (mkcert), no CORS. Cloud requires TLS files, an `https://` `CORS_ORIGIN`, `OFFSITE_BACKUP_DIR`; login limit 10/min.

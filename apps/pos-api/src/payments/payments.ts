@@ -62,9 +62,13 @@ function getOrder(tx: Tx, id: string): Order {
   return order;
 }
 
-/** Ends a session (PAID or CLOSED_EXCEPTION): its KOTs leave the kitchen board 10 min later (REQ-054). */
+/**
+ * Ends a session (PAID or CLOSED_EXCEPTION): its KOTs leave the kitchen board
+ * 10 min later (REQ-054). A PAID takeaway is the exception: it may be paid
+ * before cooking (REQ-041), so its KOTs stay until handover (orders/takeaway.ts).
+ */
 function closeSession(tx: Tx, before: Order, after: Order, userId: string): void {
-  hideOrderKots(tx, after.id, userId);
+  if (!(after.order_type === 'TAKEAWAY' && after.status === 'PAID')) hideOrderKots(tx, after.id, userId);
   emitOrderChange(tx, before, after);
 }
 
