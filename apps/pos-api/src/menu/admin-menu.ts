@@ -15,7 +15,7 @@ import { Tx } from '../storage/write-queue';
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** Next free PFX-NNNNNN id from a global counter (skips ids already in the sheet, e.g. seeded rows). */
-function nextId(tx: Tx, sheet: SheetName, prefix: string, counter: string): string {
+export function nextId(tx: Tx, sheet: SheetName, prefix: string, counter: string): string {
   for (;;) {
     const id = idFormats.seq(prefix, tx.nextCounter(counterKeys.seq(counter)));
     if (!tx.get(sheet, id)) return id;
@@ -79,7 +79,7 @@ function category(tx: Tx, id: string): Category {
 }
 
 /** Only the fields that actually change, for audit before/after. */
-function diff<T extends object>(row: T, patch: Partial<T>): { before: Partial<T>; after: Partial<T> } {
+export function diff<T extends object>(row: T, patch: Partial<T>): { before: Partial<T>; after: Partial<T> } {
   const before: Partial<T> = {};
   const after: Partial<T> = {};
   for (const key of Object.keys(patch) as (keyof T)[]) {

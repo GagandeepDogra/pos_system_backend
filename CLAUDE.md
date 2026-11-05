@@ -154,6 +154,17 @@ the requirements mandate NestJS + ExcelJS with no database. Follow the repositor
     controller's `once()` keeps creating keys in memory 24 h per user (checked inside the queue change) — **WI-014
     can copy it for tables/users**. Tests: `test/admin-menu.e2e.spec.ts`. The auth matrix "Admin gets no 403 on /admin"
     now asserts not 401/403 (real routes answer 400/428 to empty bodies).
+  - `admin/admin-staff.ts` + `admin-staff.controller.ts` (WI-014) — queue changes `createTable`/`updateTable` (ids `TBL-NNNNNN`
+    counter TABLE; 409 DUPLICATE_TABLE_NUMBER case-insensitive over all tables; deactivating with an OPEN/BILLED order →
+    409 TABLE_HAS_OPEN_ORDER `details.order`; emits `table.status_changed` + `dashboard.updated`), `createUser`/`updateUser`/
+    `resetUserPin` (409 DUPLICATE_NAME among active users, ADMIN_PIN_CLASH, LAST_ADMIN; `{unlock:true}` (or `locked_until:null`
+    / `failed_pin_count:0`) = unlock; audits CREATE/UPDATE/DEACTIVATE/REACTIVATE/UNLOCK/PIN_RESET, never pin_hash). Admin PIN
+    clash: `adminPinClashes()` bcrypt-checks before the queue, the change re-checks (compareSync) only Admin hashes not
+    pre-checked. `updateSettings` (PUT = replace; omitted gst_number/gst_rate_percent/shift_end_time → null; 400 INVALID_SETTING
+    for rate outside 0–100 / >2 dp), `currentSettings(store)`. `SettingsController` = `GET /settings` (all roles).
+    `common/memory-idempotency.ts` `MemoryIdempotency.once(sheet, scoped, res, create, replay?)` = the in-memory 24 h
+    Idempotency-Key helper for sheets without a key column (use it for new creating POSTs; admin-menu still has its own copy).
+    `nextId` and `diff` are exported from `menu/admin-menu.ts`. Tests: `test/admin-staff.e2e.spec.ts`.
   - `kitchen/kots.ts` + `kots.controller.ts` (WI-008) — `POST /orders/:id/kots` (body `{lines:[{variant_id, quantity 1–99,
     note ≤80}]}`, `runIdempotent('kots','idempotency_key')`, 400 EMPTY_CART, 422 ITEM_UNAVAILABLE `details.lines` =
     rejected lines only, BILLED → OPEN + BILL_REOPEN exception (reason_code NEW_ITEMS); response = Kot + `lines`),

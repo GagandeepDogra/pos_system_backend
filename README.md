@@ -100,6 +100,26 @@ owner can open it and back it up. The server:
     `{"new_price": "220.00", "reason": "MARKET_RATE"}` (reason one of `MARKET_RATE`, `NEW_SEASON`,
     `CORRECTION`, `OTHER`) changes the price and writes the price history row (old, new, who, when,
     reason) and an audit row together. Lines already sent keep the price they were sent at;
+- lets the Admin manage tables, staff and settings (Admin only, except reading settings):
+  - `POST /api/v1/admin/tables` (`Idempotency-Key`) with `{"table_number": "T7", "area": "Hall", "seats": 4}`
+    adds a table (`409 DUPLICATE_TABLE_NUMBER` for a number already used); `PATCH /api/v1/admin/tables/{id}`
+    (`If-Match`) renames it, changes area or seats, deactivates or reactivates it. Past orders keep the table
+    label they were opened with; a table with an open or billed order cannot be deactivated
+    (`409 TABLE_HAS_OPEN_ORDER`);
+  - `POST /api/v1/admin/users` (`Idempotency-Key`) with `{"display_name", "role", "pin", "language"?}` adds a
+    staff member. The PIN (4+ digits, else `400`) is stored only as a bcrypt hash and never returned.
+    `409 DUPLICATE_NAME` when an active user has the name, `409 ADMIN_PIN_CLASH` when another active Admin
+    has the PIN;
+  - `PATCH /api/v1/admin/users/{id}` (`If-Match`) changes name, role or language, unlocks a locked-out
+    user (`{"unlock": true}` clears the lock and the wrong-PIN count), deactivates (their logged-in
+    sessions stop working at once) or reactivates. The last active Admin cannot be deactivated or demoted
+    (`409 LAST_ADMIN`);
+  - `POST /api/v1/admin/users/{id}/pin-reset` (`If-Match`) with `{"pin": "4821"}` sets a new PIN: the old PIN
+    and the user's sessions stop working;
+  - `GET /api/v1/settings` (any role) and `PUT /api/v1/admin/settings` (`If-Match`) read and replace the dhaba
+    name, address, phone, GST number and rate (both optional; no rate = no tax line), receipt footer, token
+    reset time and shift end (`HH:mm`), late-KOT minutes, discount limit and kitchen print switch. A bad time
+    or rate is `400`. Receipts printed afterwards use the new values;
 - sends orders to the kitchen and runs the kitchen board (all need a login):
   - `POST /api/v1/orders/{id}/kots` (Admin, Cashier; `Idempotency-Key` header) with
     `{"lines":[{"variant_id":"VAR-1","quantity":2,"note":"No onion"}]}` makes one kitchen order ticket (KOT)
